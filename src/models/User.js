@@ -11,7 +11,7 @@ const userSchema = new mongoose.Schema(
     role: { type: String, enum: ROLES, default: 'member' },
     isVice: { type: Boolean, default: false },
     reportsTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-    status: { type: String, enum: ['active', 'inactive'], default: 'inactive' },
+    status: { type: String, enum: ['active', 'inactive', 'pending'], default: 'pending' },
     engagementScore: { type: Number, default: 0 },
     isEmailVerified: { type: Boolean, default: false },
     emailVerificationToken: { type: String, select: false },
@@ -25,11 +25,19 @@ const userSchema = new mongoose.Schema(
     address: { type: String, default: '' },
     emergencyContact: { type: String, default: '' },
     gender: { type: String, enum: ['male', 'female', 'other'], default: 'other' },
+    dob: { type: Date, default: null },                          // date of birth
+    membershipType: { type: String, enum: ['adolescent', 'adult', 'parent_guardian'], default: 'adolescent' },
     points: { type: Number, default: 0 },
+    totalPoints: { type: Number, default: 0 },
+    registrationBonusAwarded: { type: Boolean, default: false },
+    earlyContributorBonusAwarded: { type: Boolean, default: false },
+    isFoundingMember: { type: Boolean, default: false },
+    foundingMemberRank: { type: Number, default: null }, // 1-20
     notificationPreferences: {
       email: { type: Boolean, default: true },
       inApp: { type: Boolean, default: true },
     },
+    interests: [{ type: String, trim: true }],
   },
   {
     timestamps: true,
@@ -41,6 +49,17 @@ const userSchema = new mongoose.Schema(
 // Virtual: computed permissions based on role + isVice
 userSchema.virtual('permissions').get(function () {
   return getPermissions(this.role, this.isVice);
+});
+
+// Virtual: age calculated from DOB
+userSchema.virtual('age').get(function () {
+  if (!this.dob) return null;
+  const today = new Date();
+  const birth = new Date(this.dob);
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
 });
 
 // Hash password before save

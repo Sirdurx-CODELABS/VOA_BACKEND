@@ -70,6 +70,18 @@ const positionRoutes = require('./routes/position.routes');
 const roleChangeRoutes = require('./routes/rolechange.routes');
 const contributionRoutes = require('./routes/contribution.routes');
 const accountRoutes = require('./routes/account.routes');
+const childRoutes = require('./routes/child.routes');
+const financeTargetRoutes = require('./routes/financeTarget.routes');
+const activityRoutes = require('./routes/activity.routes');
+
+// Ensure models are registered
+require('./models/MonthlyContribution');
+require('./models/Installment');
+require('./models/FinanceTarget');
+require('./models/PointTransaction');
+require('./models/Activity');
+require('./models/ActivityParticipant');
+require('./models/ActivityMedia');
 
 const app = express();
 
@@ -82,29 +94,64 @@ app.use(cors({
   credentials: true,
 }));
 
-// Rate limiting — generous limits for dev, tighter for production
+// Trust proxy — needed when behind nginx/load balancer so req.ip is the real client IP
+app.set('trust proxy', 1);
+
+// ─── Rate Limiting ────────────────────────────────────────────────────────────
+// Strategy:
+//   • Authenticated requests → keyed by userId (not IP), very high limit
+//     → multiple users on the same network/IP never interfere with each other
+//   • Unauthenticated general requests → keyed by IP, generous limit
+//   • Auth endpoints (login/register/forgot-password) → keyed by IP, tighter to prevent brute force
+
+// Helper: extract JWT userId without full verification (just for key generation)
+const extractUserIdFromToken = (req) => {
+  try {
+    const auth = req.headers.authorization;
+    if (!auth || !auth.startsWith('Bearer ')) return null;
+    const token = auth.split(' ')[1];
+    // Decode payload without verifying (key generation only — not a security decision)
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+    return payload.id || payload._id || payload.sub || null;
+  } catch { return null; }
+};
+
+// General API limiter — authenticated users get their own bucket (userId), very high cap
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 200 : 1000,
+  max: (req) => {
+    const userId = extractUserIdFromToken(req);
+    // Authenticated: 2000 req/15min per user (≈133/min — more than enough)
+    // Unauthenticated: 300 req/15min per IP
+    return userId ? 2000 : 300;
+  },
+  keyGenerator: (req) => {
+    const userId = extractUserIdFromToken(req);
+    return userId ? `user:${userId}` : (req.ip || req.headers['x-forwarded-for'] || 'unknown');
+  },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => {
-    // Skip rate limiting for super_admin (identified by header set after auth)
-    return req.headers['x-bypass-ratelimit'] === process.env.JWT_SECRET?.slice(0, 8);
-  },
-  message: { success: false, message: 'Too many requests, please try again in a few minutes.' },
+  message: { success: false, message: 'Too many requests. Please slow down and try again shortly.' },
+  skip: () => process.env.NODE_ENV === 'development', // no limits in dev
 });
 
+// Auth limiter — only for login/register/forgot-password (unauthenticated, IP-based)
+// Generous enough for a shared office/network: 100 attempts per 15min per IP
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 20 : 100,
+  max: process.env.NODE_ENV === 'production' ? 100 : 500,
+  keyGenerator: (req) => req.ip || req.headers['x-forwarded-for'] || 'unknown',
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, message: 'Too many auth attempts, please try again later.' },
+  message: { success: false, message: 'Too many attempts from this network. Please wait 15 minutes and try again.' },
+  skip: () => process.env.NODE_ENV === 'development',
 });
 
 app.use('/api/', limiter);
-app.use('/api/auth', authLimiter);
+// Auth limiter only on the heavy endpoints — not on /me or /verify-email
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
@@ -135,6 +182,9 @@ app.use('/api/position-applications', positionRoutes);
 app.use('/api/role-change-requests', roleChangeRoutes);
 app.use('/api/contributions', contributionRoutes);
 app.use('/api/accounts', accountRoutes);
+app.use('/api/children', childRoutes);
+app.use('/api/finance-targets', financeTargetRoutes);
+app.use('/api/activities', activityRoutes);
 
 // 404 handler
 app.use((req, res) => {

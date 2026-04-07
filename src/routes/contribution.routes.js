@@ -2,22 +2,42 @@ const router = require('express').Router();
 const ctrl = require('../controllers/contribution.controller');
 const { protect, requirePermission } = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const { getPointsHistory } = require('../services/points.service');
+const { success } = require('../utils/apiResponse');
 
 router.use(protect);
 
-// All authenticated users can see summary (transparency)
+// Transparency summary — all authenticated
 router.get('/summary', ctrl.getSummary);
+
+// Required amount for current user
 router.get('/required-amount', ctrl.getRequiredAmount);
 
-// View contributions
-router.get('/', requirePermission('view_contributions'), ctrl.getAll);
-router.get('/:id', requirePermission('view_contributions'), ctrl.getById);
+// Monthly status for current user
+router.get('/monthly-status', ctrl.getMonthlyStatus);
 
-// Member submits
-router.post('/', requirePermission('submit_contribution'), upload.single('proofImage'), ctrl.submit);
+// Recalculate required amount (call after profile/children changes)
+router.post('/recalculate', ctrl.recalculateMyContribution);
 
-// Treasurer approves/rejects
-router.patch('/:id/approve', requirePermission('manage_contributions'), ctrl.approve);
-router.patch('/:id/reject', requirePermission('manage_contributions'), ctrl.reject);
+// Points history
+router.get('/my-points', async (req, res, next) => {
+  try {
+    const history = await getPointsHistory(req.user._id);
+    return success(res, history);
+  } catch (err) { next(err); }
+});
+
+// All installments (treasurer sees all, member sees own)
+router.get('/installments', ctrl.getAllInstallments);
+
+// All monthly records
+router.get('/monthly-records', ctrl.getAllMonthlyRecords);
+
+// Submit installment
+router.post('/installments', requirePermission('submit_contribution'), upload.single('proofImage'), ctrl.submitInstallment);
+
+// Approve / reject
+router.patch('/installments/:id/approve', requirePermission('manage_contributions'), ctrl.approveInstallment);
+router.patch('/installments/:id/reject', requirePermission('manage_contributions'), ctrl.rejectInstallment);
 
 module.exports = router;

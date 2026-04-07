@@ -11,6 +11,7 @@ const contributionSchema = new mongoose.Schema({
   paymentMethod:         { type: String, enum: ['bank_transfer', 'cash', 'other'], default: 'bank_transfer' },
   referenceNote:         { type: String, default: '' },
   accountId:             { type: mongoose.Schema.Types.ObjectId, ref: 'TreasuryAccount', default: null },
+  targetId:              { type: mongoose.Schema.Types.ObjectId, ref: 'FinanceTarget', default: null },
   status:                { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
   approvedBy:            { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   approvedAt:            { type: Date, default: null },

@@ -158,7 +158,7 @@ const SEED_USERS = [
     password: 'Member@123',
     phone: '08099999903',
     role: 'member',
-    status: 'inactive',  // pending approval — to demo membership coordinator flow
+    status: 'pending',  // pending approval — to demo the approval flow
     isEmailVerified: true,
     engagementScore: 0,
     bio: 'New member awaiting approval by Membership Coordinator.',

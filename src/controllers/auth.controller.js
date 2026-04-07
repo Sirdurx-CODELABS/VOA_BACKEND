@@ -13,52 +13,82 @@ const isDev = () => process.env.NODE_ENV !== 'production';
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
 exports.register = async (req, res, next) => {
   try {
-    const { fullName, email, password, phone } = req.body;
+    const { fullName, email, password, phone, gender, dob, address, interests, children } = req.body;
 
-    // Check if email already used
     const existing = await User.findOne({ email });
-
     if (existing) {
-      // If user exists but never verified — resend verification and tell them
-      if (!existing.isEmailVerified && !isDev()) {
-        const token = generateRandomToken();
-        existing.emailVerificationToken = hashToken(token);
-        existing.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
-        await existing.save({ validateBeforeSave: false });
-        sendVerificationEmail(email, token); // fire-and-forget
-        return error(res, 'Email already registered but not verified. A new verification link has been sent.', 409);
+      if (existing.status === 'pending') {
+        return error(res, 'Your account is already registered and awaiting approval by the Membership Coordinator.', 409);
       }
       return error(res, 'Email already registered', 409);
     }
 
-    const verificationToken = generateRandomToken();
-    const dev = isDev();
+    // Validate DOB if provided
+    if (dob && new Date(dob) > new Date()) {
+      return error(res, 'Date of birth cannot be in the future', 400);
+    }
+
+    // Auto-derive membership type from DOB — client-sent membershipType is ignored
+    const { deriveMembershipType } = require('../services/contributionCalc.service');
+    // At registration, parent_guardian only if they explicitly added children
+    const hasChildren = Array.isArray(children) && children.filter(c => c.childName && c.childDob).length > 0;
+    const derivedMembershipType = dob ? deriveMembershipType(dob, hasChildren) : 'adolescent';
 
     const user = await User.create({
-      fullName,
-      email,
-      password,
-      phone,
-      // Dev: auto-verify + auto-activate so you can log in right away
-      isEmailVerified: dev ? true : false,
-      status: dev ? 'active' : 'inactive',
-      emailVerificationToken: dev ? undefined : hashToken(verificationToken),
-      emailVerificationExpires: dev ? undefined : Date.now() + 24 * 60 * 60 * 1000,
+      fullName, email, password, phone,
+      gender: gender || 'other',
+      dob: dob || null,
+      membershipType: derivedMembershipType,
+      address: address || '',
+      interests: Array.isArray(interests) ? interests : [],
+      isEmailVerified: true,
+      status: 'pending',
+      role: 'member',
     });
 
-    // Send verification email — fire-and-forget, never blocks response
-    if (!dev) {
-      sendVerificationEmail(email, verificationToken);
-    } else {
-      logger.info(`[DEV] Auto-verified & activated: ${email}`);
+    // Save children if provided
+    if (hasChildren) {
+      const Child = require('../models/Child');
+      const validChildren = children.filter(c => c.childName && c.childDob);
+      for (const c of validChildren) {
+        if (new Date(c.childDob) < new Date()) {
+          await Child.create({
+            parentId: user._id,
+            childName: c.childName,
+            childDob: c.childDob,
+            childGender: c.childGender || 'other',
+            relationship: c.relationship || 'other',
+          }).catch(() => {});
+        }
+      }
+    }
+
+    logger.info(`New registration (pending approval): ${email}`);
+
+    // Award founding member bonus to first 20 users (fire-and-forget)
+    const { awardRegistrationBonus } = require('../services/points.service');
+    awardRegistrationBonus(user._id).catch(() => {});
+
+    // Notify membership coordinators and chairman
+    const approvers = await User.find({
+      role: { $in: ['super_admin', 'chairman', 'membership_coordinator'] },
+      status: 'active',
+    }).select('_id');
+
+    const { createNotification } = require('../services/notification.service');
+    for (const approver of approvers) {
+      createNotification({
+        recipient: approver._id,
+        title: 'New Member Registration',
+        message: `${fullName} has registered and is awaiting account approval.`,
+        type: 'general',
+      }).catch(() => {});
     }
 
     return success(
       res,
-      { id: user._id, email: user.email, isEmailVerified: user.isEmailVerified, status: user.status },
-      dev
-        ? 'Registration successful. You can log in immediately.'
-        : 'Registration successful. A verification link has been sent to your email.',
+      { id: user._id, email: user.email, status: user.status },
+      'Registration successful! Your account is pending approval. You will be notified once approved.',
       201
     );
   } catch (err) {
@@ -120,12 +150,13 @@ exports.login = async (req, res, next) => {
     const passwordMatch = await user.comparePassword(password);
     if (!passwordMatch) return error(res, 'Invalid email or password', 401);
 
-    if (!user.isEmailVerified) {
-      return error(res, 'Please verify your email before logging in. Check your inbox or request a new link.', 403);
+    // Account must be approved (active) — no email verification required
+    if (user.status === 'pending') {
+      return error(res, 'Your account is pending approval. You will be notified once a Membership Coordinator or Chairman approves your account.', 403);
     }
 
     if (user.status === 'inactive') {
-      return error(res, 'Your account is pending approval by the Membership Coordinator.', 403);
+      return error(res, 'Your account has been deactivated. Please contact the Membership Coordinator.', 403);
     }
 
     const token = generateAccessToken(user._id);
@@ -146,6 +177,21 @@ exports.login = async (req, res, next) => {
         status: user.status,
         engagementScore: user.engagementScore,
         profileImage: user.profileImage,
+        gender: user.gender,
+        dob: user.dob,
+        membershipType: user.membershipType,
+        age: user.age,
+        interests: user.interests,
+        bio: user.bio,
+        state: user.state,
+        address: user.address,
+        emergencyContact: user.emergencyContact,
+        totalPoints: user.totalPoints,
+        points: user.points,
+        isFoundingMember: user.isFoundingMember,
+        foundingMemberRank: user.foundingMemberRank,
+        earlyContributorBonusAwarded: user.earlyContributorBonusAwarded,
+        createdAt: user.createdAt,
       },
     }, 'Login successful');
   } catch (err) {
