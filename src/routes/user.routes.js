@@ -16,6 +16,7 @@ router.delete('/:id',        requirePermission('manage_users'), ctrl.deleteUser)
 
 router.patch('/:id/approve',     requirePermission('manage_users'),       ctrl.approveUser);
 router.patch('/:id/reject',      requirePermission('manage_users'),       ctrl.rejectUser);
+router.patch('/:id/activate',    requirePermission('manage_users'),       ctrl.activateUser);
 router.patch('/:id/assign-role', requirePermission('change_role_direct'), canChangeRole, ctrl.assignRole);
 
 module.exports = router;

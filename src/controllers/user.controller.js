@@ -102,6 +102,33 @@ exports.rejectUser = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Reactivate an inactive user
+exports.activateUser = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return error(res, 'User not found', 404);
+    if (user.status === 'active') return error(res, 'User is already active', 400);
+
+    // Only super_admin, chairman, vice_chairman, membership_coordinator (and their vices) can activate
+    const approverRole = req.user.role;
+    const canActivate = ['super_admin', 'chairman', 'vice_chairman', 'membership_coordinator'].includes(approverRole) || req.user.isVice;
+    if (!canActivate) return error(res, 'You do not have permission to activate accounts', 403);
+
+    user.status = 'active';
+    user.isEmailVerified = true;
+    await user.save();
+
+    await createNotification({
+      recipient: user._id,
+      title: '✅ Account Reactivated',
+      message: 'Your VOA account has been reactivated. You can now log in.',
+      type: 'achievement',
+    });
+
+    return success(res, user, 'User account activated successfully');
+  } catch (err) { next(err); }
+};
+
 exports.assignRole = async (req, res, next) => {
   try {
     const { role, isVice, reportsTo } = req.body;
