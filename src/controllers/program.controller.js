@@ -2,10 +2,27 @@ const Program = require('../models/Program');
 const { success, error, paginated } = require('../utils/apiResponse');
 const { paginate, paginationMeta } = require('../utils/pagination');
 const { createNotification, notifyMany } = require('../services/notification.service');
+const { uploadToCloudinary } = require('../services/upload.service');
 
 exports.createProgram = async (req, res, next) => {
   try {
-    const program = await Program.create({ ...req.body, createdBy: req.user._id });
+    const data = { ...req.body, createdBy: req.user._id };
+    
+    // Handle images upload
+    if (req.files && req.files.images) {
+      const images = [];
+      const files = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
+      
+      for (const file of files) {
+        if (images.length >= 10) break;
+        const uploadedUrl = await uploadToCloudinary(file.path, 'programs');
+        images.push(uploadedUrl);
+      }
+      data.images = images;
+    }
+
+    const program = await Program.create(data);
+    
     // Notify assigned members
     if (program.assignedMembers?.length) {
       await notifyMany(program.assignedMembers, {
@@ -38,6 +55,18 @@ exports.getAllPrograms = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+exports.getPublicPrograms = async (req, res, next) => {
+  try {
+    const filter = { isPublic: true };
+    if (req.query.status) filter.status = req.query.status;
+    
+    const programs = await Program.find(filter)
+      .populate('createdBy', 'fullName')
+      .sort('-createdAt');
+    return success(res, programs);
+  } catch (err) { next(err); }
+};
+
 exports.getProgramById = async (req, res, next) => {
   try {
     const program = await Program.findById(req.params.id)
@@ -58,7 +87,23 @@ exports.updateProgram = async (req, res, next) => {
       return error(res, 'Not authorized to update this program', 403);
     }
 
-    Object.assign(program, req.body);
+    const data = { ...req.body };
+    
+    // Handle images upload
+    if (req.files && req.files.images) {
+      const images = [...(program.images || [])];
+      const files = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
+      
+      for (const file of files) {
+        if (images.length >= 10) break;
+        const uploadedUrl = await uploadToCloudinary(file.path, 'programs');
+        images.push(uploadedUrl);
+      }
+      // Merge existing images with new ones, max 10
+      data.images = images.slice(0, 10);
+    }
+
+    Object.assign(program, data);
     await program.save();
     return success(res, program, 'Program updated');
   } catch (err) { next(err); }
@@ -105,5 +150,69 @@ exports.removeMembers = async (req, res, next) => {
     );
     if (!program) return error(res, 'Program not found', 404);
     return success(res, program, 'Members removed');
+  } catch (err) { next(err); }
+};
+
+// Join requests
+exports.submitJoinRequest = async (req, res, next) => {
+  try {
+    const { name, email, phone, message } = req.body;
+    const program = await Program.findById(req.params.id);
+    
+    if (!program) return error(res, 'Program not found', 404);
+    if (!program.isPublic) return error(res, 'Program not open for join requests', 403);
+
+    // Check if already submitted
+    const existingRequest = program.joinRequests.find(
+      (r) => r.email.toLowerCase() === email.toLowerCase()
+    );
+    if (existingRequest) return error(res, 'Join request already submitted', 400);
+
+    program.joinRequests.push({
+      user: req.user?._id || null,
+      name,
+      email,
+      phone,
+      message,
+    });
+
+    await program.save();
+
+    return success(res, program, 'Join request submitted successfully');
+  } catch (err) { next(err); }
+};
+
+exports.getJoinRequests = async (req, res, next) => {
+  try {
+    const program = await Program.findById(req.params.id)
+      .populate('joinRequests.user', 'fullName email');
+    
+    if (!program) return error(res, 'Program not found', 404);
+    return success(res, program.joinRequests);
+  } catch (err) { next(err); }
+};
+
+exports.updateJoinRequestStatus = async (req, res, next) => {
+  try {
+    const { requestId, status } = req.body;
+    const program = await Program.findById(req.params.id);
+    
+    if (!program) return error(res, 'Program not found', 404);
+
+    const joinRequest = program.joinRequests.id(requestId);
+    if (!joinRequest) return error(res, 'Join request not found', 404);
+
+    joinRequest.status = status;
+
+    // If approved, add to assigned members
+    if (status === 'approved' && joinRequest.user) {
+      if (!program.assignedMembers.includes(joinRequest.user)) {
+        program.assignedMembers.push(joinRequest.user);
+      }
+    }
+
+    await program.save();
+
+    return success(res, program, 'Join request status updated');
   } catch (err) { next(err); }
 };

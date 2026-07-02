@@ -109,18 +109,45 @@ exports.getMyDashboard = async (req, res, next) => {
     const Announcement = require('../models/Announcement');
     const WelfareRequest = require('../models/WelfareRequest');
     const Notification = require('../models/Notification');
+    const DocumentApproval = require('../models/DocumentApproval');
     const { calculateRequiredContribution } = require('../services/contributionCalc.service');
     const currentMonth = new Date().toISOString().slice(0, 7);
 
+    // Build last 3 months array: ['2026-05', '2026-04', '2026-03']
+    const last3Months = Array.from({ length: 3 }, (_, i) => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      return d.toISOString().slice(0, 7);
+    });
+
     // ── Data every user gets ──────────────────────────────────────────────
-    const [myContrib, myInstallments, unreadNotifs, recentAnnouncements] = await Promise.all([
+    const [myContrib, myInstallments, unreadNotifs, recentAnnouncements, last3Contribs] = await Promise.all([
       MonthlyContribution.findOne({ userId: user._id, month: currentMonth }),
       Installment.find({ userId: user._id, month: currentMonth }).sort('-createdAt').limit(5),
       Notification.countDocuments({ recipient: user._id, isRead: false }),
       Announcement.find({ status: 'published' }).sort('-createdAt').limit(3).select('title category createdAt'),
+      MonthlyContribution.find({ userId: user._id, month: { $in: last3Months } }).sort('-month'),
     ]);
 
     const requiredContrib = await calculateRequiredContribution(user);
+
+    // Build 3-month history with required amount filled in for missing months
+    const contributionHistory = last3Months.map(month => {
+      const record = last3Contribs.find(r => r.month === month);
+      return {
+        month,
+        requiredAmount: record?.requiredAmount ?? requiredContrib.requiredAmount,
+        amountPaid: record?.amountPaid ?? 0,
+        remainingAmount: record ? Math.max(0, record.requiredAmount - record.amountPaid) : requiredContrib.requiredAmount,
+        progressPercent: record?.progressPercent ?? 0,
+        isCompleted: record?.isCompleted ?? false,
+        extraAmount: record?.extraAmount ?? 0,
+      };
+    });
+
+    const [pendingApprovals] = await Promise.all([
+      DocumentApproval.countDocuments({ assignedTo: user._id, status: 'pending' }),
+    ]);
 
     const base = {
       user: {
@@ -138,6 +165,7 @@ exports.getMyDashboard = async (req, res, next) => {
         isFoundingMember: user.isFoundingMember,
         foundingMemberRank: user.foundingMemberRank,
       },
+      pendingApprovals,
       contribution: {
         required: requiredContrib.requiredAmount,
         paid: myContrib?.amountPaid ?? 0,
@@ -148,6 +176,7 @@ exports.getMyDashboard = async (req, res, next) => {
         breakdown: requiredContrib.breakdown ?? [],
         calculationSource: requiredContrib.calculationSource,
         recentInstallments: myInstallments,
+        history: contributionHistory,
       },
       notifications: { unread: unreadNotifs },
       recentAnnouncements,

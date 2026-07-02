@@ -73,6 +73,16 @@ const accountRoutes = require('./routes/account.routes');
 const childRoutes = require('./routes/child.routes');
 const financeTargetRoutes = require('./routes/financeTarget.routes');
 const activityRoutes = require('./routes/activity.routes');
+const documentTemplateRoutes = require('./routes/documentTemplate.routes');
+const systemInfoRoutes = require('./routes/systemInfo.routes');
+const ledgerRoutes = require('./routes/ledger.routes');
+const blogRoutes = require('./routes/blog.routes');
+const eventRoutes = require('./routes/event.routes');
+const projectRoutes = require('./routes/project.routes');
+const contactRoutes = require('./routes/contact.routes');
+const teamRoutes = require('./routes/team.routes');
+const templateConfigRoutes = require('./routes/templateConfig.routes');
+const documentApprovalRoutes = require('./routes/documentApproval.routes');
 
 // Ensure models are registered
 require('./models/MonthlyContribution');
@@ -82,6 +92,14 @@ require('./models/PointTransaction');
 require('./models/Activity');
 require('./models/ActivityParticipant');
 require('./models/ActivityMedia');
+require('./models/ContributionLedger');
+require('./models/ContributionMonth');
+require('./models/TargetAllocation');
+require('./models/Blog');
+require('./models/Event');
+require('./models/Project');
+require('./models/TeamMember');
+require('./models/ContactMessage');
 
 const app = express();
 
@@ -89,8 +107,15 @@ const app = express();
 app.use(helmet());
 
 // CORS
+const allowedOrigins = (process.env.CLIENT_URLS || 'http://localhost:3000,http://localhost:3001').split(',');
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || '*',
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true); // Allow requests with no origin (like mobile apps or curl)
+    }
+    callback(null, true);
+  },
   credentials: true,
 }));
 
@@ -185,6 +210,16 @@ app.use('/api/accounts', accountRoutes);
 app.use('/api/children', childRoutes);
 app.use('/api/finance-targets', financeTargetRoutes);
 app.use('/api/activities', activityRoutes);
+app.use('/api/document-templates', documentTemplateRoutes);
+app.use('/api/ledger', ledgerRoutes);
+app.use('/api/blogs', blogRoutes);
+app.use('/api/events', eventRoutes);
+app.use('/api/projects', projectRoutes);
+app.use('/api/contact', contactRoutes);
+app.use('/api/team', teamRoutes);
+app.use('/api/system-info', systemInfoRoutes);
+app.use('/api/template-config', templateConfigRoutes);
+app.use('/api/document-approvals', documentApprovalRoutes);
 
 // 404 handler
 app.use((req, res) => {

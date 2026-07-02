@@ -6,6 +6,38 @@ const { createNotification } = require('../services/notification.service');
 const { uploadToCloudinary } = require('../services/upload.service');
 const { canAssignRole } = require('../config/permissions');
 
+// Public-safe fields only — no email, phone, sensitive data
+const PUBLIC_FIELDS = 'fullName role isVice profileImage bio state membershipType interests isFoundingMember foundingMemberRank';
+
+/**
+ * GET /api/users/public-team
+ * Public endpoint — returns active members with safe fields only.
+ * Used by the VOA public website team page.
+ */
+exports.getPublicTeam = async (req, res, next) => {
+  try {
+    const users = await User.find({ status: 'active' })
+      .select(PUBLIC_FIELDS)
+      .sort({ createdAt: 1 })
+      .lean();
+    return success(res, users, 'Team fetched');
+  } catch (err) { next(err); }
+};
+
+/**
+ * GET /api/users/public-team/:id
+ * Public endpoint — single member, public-safe fields only.
+ */
+exports.getPublicMember = async (req, res, next) => {
+  try {
+    const user = await User.findOne({ _id: req.params.id, status: 'active' })
+      .select(PUBLIC_FIELDS)
+      .lean();
+    if (!user) return error(res, 'Member not found', 404);
+    return success(res, user);
+  } catch (err) { next(err); }
+};
+
 exports.getAllUsers = async (req, res, next) => {
   try {
     const { page, limit, skip } = paginate(req.query);

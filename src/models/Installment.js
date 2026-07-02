@@ -4,8 +4,9 @@ const mongoose = require('mongoose');
  * Individual payment installment toward a monthly contribution.
  */
 const installmentSchema = new mongoose.Schema({
-  userId:                   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  monthlyContributionId:    { type: mongoose.Schema.Types.ObjectId, ref: 'MonthlyContribution', required: true },
+  userId:                   { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  externalMemberName:       { type: String, default: null },
+  monthlyContributionId:    { type: mongoose.Schema.Types.ObjectId, ref: 'MonthlyContribution', default: null },
   month:                    { type: String, required: true },
   amount:                   { type: Number, required: true, min: 1 },
   paymentMode:              { type: String, enum: ['required', 'custom', 'installment'], default: 'required' },
@@ -14,7 +15,7 @@ const installmentSchema = new mongoose.Schema({
   proofImage:               { type: String, default: null },
   accountId:                { type: mongoose.Schema.Types.ObjectId, ref: 'TreasuryAccount', default: null },
   targetId:                 { type: mongoose.Schema.Types.ObjectId, ref: 'FinanceTarget', default: null },
-  status:                   { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  status:                   { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved' },
   approvedBy:               { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   approvedAt:               { type: Date, default: null },
   rejectionReason:          { type: String, default: '' },

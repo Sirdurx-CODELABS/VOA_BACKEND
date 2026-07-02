@@ -9,6 +9,7 @@ const { uploadToCloudinary } = require('../services/upload.service');
 const { log } = require('../services/audit.service');
 const { calculateRequiredContribution, getMinimumPayment } = require('../services/contributionCalc.service');
 const { awardEarlyContributorBonus, awardContributionPoints } = require('../services/points.service');
+const { getOrCreateLedger, allocatePaymentFIFO, updateLedger } = require('../services/ledger.service');
 
 const generateReceiptNumber = () => {
   const ts = Date.now().toString(36).toUpperCase();
@@ -161,6 +162,10 @@ exports.approveInstallment = async (req, res, next) => {
     await awardEarlyContributorBonus(inst.userId._id, inst._id);
     inst.pointsAwarded = totalPoints;
     await inst.save();
+
+    // Update contribution ledger
+    const ledger = await getOrCreateLedger(inst.userId._id);
+    await allocatePaymentFIFO(ledger._id, inst.amount, inst._id);
 
     // Update finance target if linked
     if (inst.targetId) {

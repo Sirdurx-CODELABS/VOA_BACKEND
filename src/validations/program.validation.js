@@ -10,6 +10,7 @@ const createProgram = Joi.object({
   venue: Joi.string().optional().allow(''),
   tags: Joi.array().items(Joi.string()).optional(),
   assignedMembers: Joi.array().items(Joi.string()).optional(),
+  isPublic: Joi.boolean().optional().default(true),
 }).options({ stripUnknown: true });
 
 // Update allows status change + all create fields optional
@@ -23,6 +24,7 @@ const updateProgram = Joi.object({
   tags: Joi.array().items(Joi.string()).optional(),
   assignedMembers: Joi.array().items(Joi.string()).optional(),
   status: Joi.string().valid('upcoming', 'ongoing', 'completed').optional(),
+  isPublic: Joi.boolean().optional(),
 }).options({ stripUnknown: true });
 
 module.exports = { createProgram, updateProgram };

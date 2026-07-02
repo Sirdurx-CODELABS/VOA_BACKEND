@@ -3,6 +3,12 @@ const ctrl = require('../controllers/user.controller');
 const { protect, requirePermission, canChangeRole } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
+// ── PUBLIC: no auth required ──────────────────────────────────────────────
+// Used by the VOA public website to display the team page
+router.get('/public-team', ctrl.getPublicTeam);
+router.get('/public-team/:id', ctrl.getPublicMember);
+
+// ── PROTECTED: all routes below require a valid JWT ───────────────────────
 router.use(protect);
 
 router.get('/',    requirePermission('view_all_users'),   ctrl.getAllUsers);
