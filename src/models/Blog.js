@@ -13,6 +13,7 @@ const blogSchema = new mongoose.Schema(
     status: { type: String, enum: ['draft', 'published'], default: 'draft' },
     readTime: { type: String, default: '5 min read' },
     views: { type: Number, default: 0 },
+    allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
   },
   { timestamps: true }
 );

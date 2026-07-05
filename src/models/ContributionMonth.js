@@ -42,7 +42,12 @@ const contributionMonthSchema = new mongoose.Schema({
   payments: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Installment'
-  }]
+  }],
+  allianceOrganizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'AllianceOrganization',
+    default: null
+  }
 }, {
   timestamps: true
 });

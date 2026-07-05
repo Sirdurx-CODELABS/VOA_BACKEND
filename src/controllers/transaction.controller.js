@@ -6,7 +6,9 @@ const User = require('../models/User');
 
 exports.createTransaction = async (req, res, next) => {
   try {
-    const transaction = await Transaction.create({ ...req.body, createdBy: req.user._id });
+    const txnData = { ...req.body, createdBy: req.user._id };
+    if (req.allianceOrganizationId) txnData.allianceOrganizationId = req.allianceOrganizationId;
+    const transaction = await Transaction.create(txnData);
     // Notify chairman for expenses above threshold
     if (transaction.type === 'expense' && transaction.amount >= 10000) {
       const chairman = await User.findOne({ role: 'chairman' });
@@ -32,6 +34,11 @@ exports.getAllTransactions = async (req, res, next) => {
     if (req.query.type) filter.type = req.query.type;
     if (req.query.status) filter.status = req.query.status;
     if (req.query.programId) filter.programId = req.query.programId;
+    if (!req.isSuperAdmin) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     const [transactions, total] = await Promise.all([
       Transaction.find(filter).skip(skip).limit(limit)
@@ -47,7 +54,11 @@ exports.getAllTransactions = async (req, res, next) => {
 
 exports.getTransactionById = async (req, res, next) => {
   try {
-    const t = await Transaction.findById(req.params.id)
+    const tFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      tFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const t = await Transaction.findOne(tFilter)
       .populate('createdBy', 'fullName role')
       .populate('approvedBy', 'fullName')
       .populate('programId', 'title date');
@@ -58,7 +69,11 @@ exports.getTransactionById = async (req, res, next) => {
 
 exports.approveTransaction = async (req, res, next) => {
   try {
-    const t = await Transaction.findById(req.params.id);
+    const tFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      tFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const t = await Transaction.findOne(tFilter);
     if (!t) return error(res, 'Transaction not found', 404);
     if (t.status !== 'pending') return error(res, 'Transaction already processed', 400);
 
@@ -82,8 +97,12 @@ exports.approveTransaction = async (req, res, next) => {
 
 exports.rejectTransaction = async (req, res, next) => {
   try {
-    const t = await Transaction.findByIdAndUpdate(
-      req.params.id,
+    const rejectFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      rejectFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const t = await Transaction.findOneAndUpdate(
+      rejectFilter,
       { status: 'rejected' },
       { new: true }
     );
@@ -96,6 +115,11 @@ exports.getFinancialSummary = async (req, res, next) => {
   try {
     const filter = { status: 'approved' };
     if (req.query.programId) filter.programId = req.query.programId;
+    if (!req.isSuperAdmin) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     const [income, expense] = await Promise.all([
       Transaction.aggregate([{ $match: { ...filter, type: 'income' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
@@ -105,11 +129,18 @@ exports.getFinancialSummary = async (req, res, next) => {
     const totalIncome = income[0]?.total || 0;
     const totalExpense = expense[0]?.total || 0;
 
+    const pendingFilter = { status: 'pending' };
+    if (!req.isSuperAdmin) {
+      pendingFilter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      pendingFilter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
+
     return success(res, {
       totalIncome,
       totalExpense,
       balance: totalIncome - totalExpense,
-      pending: await Transaction.countDocuments({ status: 'pending' }),
+      pending: await Transaction.countDocuments(pendingFilter),
     });
   } catch (err) { next(err); }
 };

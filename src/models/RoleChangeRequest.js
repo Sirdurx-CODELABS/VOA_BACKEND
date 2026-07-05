@@ -15,6 +15,7 @@ const roleChangeRequestSchema = new mongoose.Schema({
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   note: { type: String },
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('RoleChangeRequest', roleChangeRequestSchema);

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const AllianceOrganization = require('../models/AllianceOrganization');
 const { error } = require('../utils/apiResponse');
 const { canAssignRole } = require('../config/permissions');
 
@@ -20,6 +21,18 @@ const protect = async (req, res, next) => {
     if (user.status === 'inactive') return error(res, 'Account is inactive. Contact the Membership Coordinator.', 403);
 
     req.user = user;
+
+    // Attach organization context
+    if (user.allianceOrganizationId) {
+      const org = await AllianceOrganization.findById(user.allianceOrganizationId).lean().catch(() => null);
+      req.organization = org || null;
+      req.allianceOrganizationId = user.allianceOrganizationId;
+    } else {
+      req.organization = null;
+      req.allianceOrganizationId = null;
+    }
+    req.isSuperAdmin = user.role === 'super_admin';
+
     // Non-blocking activity update
     user.updateActivity().catch(() => {});
     next();

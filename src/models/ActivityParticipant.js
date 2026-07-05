@@ -10,6 +10,7 @@ const activityParticipantSchema = new mongoose.Schema({
   attendanceReason: { type: String, default: '' },
   invitedAt:        { type: Date, default: Date.now },
   respondedAt:      { type: Date, default: null },
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, { timestamps: true });
 
 activityParticipantSchema.index({ activityId: 1, userId: 1 }, { unique: true });

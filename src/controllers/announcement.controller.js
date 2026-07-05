@@ -8,7 +8,7 @@ const { canPostCategory, getAllowedCategories, CATEGORY_META } = require('../con
 
 exports.createAnnouncement = async (req, res, next) => {
   try {
-    const { title, message, category, visibility, targetRoles, departmentTag, status } = req.body;
+    const { title, message, category, visibility, targetRoles, departmentTag, status, shareToChannels } = req.body;
 
     // Validate category is allowed for this role
     if (!canPostCategory(req.user.role, category)) {
@@ -21,7 +21,7 @@ exports.createAnnouncement = async (req, res, next) => {
       attachments = await uploadMany(req.files, 'voa/announcements');
     }
 
-    const announcement = await Announcement.create({
+    const announcementData = {
       title, message, category,
       visibility: visibility || 'internal',
       targetRoles: targetRoles || [],
@@ -30,7 +30,10 @@ exports.createAnnouncement = async (req, res, next) => {
       createdBy: req.user._id,
       createdByRole: req.user.role,
       attachments,
-    });
+      shareToChannels: shareToChannels || [],
+    };
+    if (req.allianceOrganizationId) announcementData.allianceOrganizationId = req.allianceOrganizationId;
+    const announcement = await Announcement.create(announcementData);
 
     // Notify based on visibility
     if (announcement.status === 'published') {
@@ -67,6 +70,11 @@ exports.getAllAnnouncements = async (req, res, next) => {
     if (req.query.category) filter.category = req.query.category;
     if (req.query.visibility) filter.visibility = req.query.visibility;
     if (req.query.status) filter.status = req.query.status;
+    if (!req.isSuperAdmin) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     // Members only see announcements targeted to them or internal
     if (req.user.role === 'member') {
@@ -79,6 +87,7 @@ exports.getAllAnnouncements = async (req, res, next) => {
     const [announcements, total] = await Promise.all([
       Announcement.find(filter).skip(skip).limit(limit)
         .populate('createdBy', 'fullName role profileImage')
+        .populate('shareToChannels', 'name type identifier')
         .sort({ isPinned: -1, createdAt: -1 }),
       Announcement.countDocuments(filter),
     ]);
@@ -88,7 +97,11 @@ exports.getAllAnnouncements = async (req, res, next) => {
 
 exports.getAnnouncementById = async (req, res, next) => {
   try {
-    const a = await Announcement.findById(req.params.id).populate('createdBy', 'fullName role profileImage');
+    const aFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      aFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const a = await Announcement.findOne(aFilter).populate('createdBy', 'fullName role profileImage');
     if (!a) return error(res, 'Announcement not found', 404);
     return success(res, a);
   } catch (err) { next(err); }
@@ -96,7 +109,11 @@ exports.getAnnouncementById = async (req, res, next) => {
 
 exports.updateAnnouncement = async (req, res, next) => {
   try {
-    const a = await Announcement.findById(req.params.id);
+    const aFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      aFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const a = await Announcement.findOne(aFilter);
     if (!a) return error(res, 'Announcement not found', 404);
 
     // Only creator or super_admin/chairman can edit
@@ -112,18 +129,22 @@ exports.updateAnnouncement = async (req, res, next) => {
       }
     }
 
-    const allowed = ['title', 'message', 'category', 'visibility', 'targetRoles', 'departmentTag', 'status', 'isPinned'];
+    const allowed = ['title', 'message', 'category', 'visibility', 'targetRoles', 'departmentTag', 'status', 'isPinned', 'shareToChannels'];
     const updates = {};
     allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
 
-    const updated = await Announcement.findByIdAndUpdate(req.params.id, updates, { new: true });
+    const updated = await Announcement.findOneAndUpdate(aFilter, updates, { new: true });
     return success(res, updated, 'Announcement updated');
   } catch (err) { next(err); }
 };
 
 exports.deleteAnnouncement = async (req, res, next) => {
   try {
-    const a = await Announcement.findById(req.params.id);
+    const aFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      aFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const a = await Announcement.findOne(aFilter);
     if (!a) return error(res, 'Announcement not found', 404);
 
     const canDelete = req.user.role === 'super_admin' ||
@@ -131,7 +152,7 @@ exports.deleteAnnouncement = async (req, res, next) => {
       a.createdBy.toString() === req.user._id.toString();
     if (!canDelete) return error(res, 'Not authorized to delete this announcement', 403);
 
-    await Announcement.findByIdAndDelete(req.params.id);
+    await Announcement.findOneAndDelete(aFilter);
     return success(res, null, 'Announcement deleted');
   } catch (err) { next(err); }
 };
@@ -139,12 +160,19 @@ exports.deleteAnnouncement = async (req, res, next) => {
 exports.getPublicAnnouncements = async (req, res, next) => {
   try {
     const { page, limit, skip } = paginate(req.query);
+    const publicFilter = { visibility: 'public', status: 'published' };
+    if (!req.isSuperAdmin) {
+      publicFilter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      publicFilter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
     const [announcements, total] = await Promise.all([
-      Announcement.find({ visibility: 'public', status: 'published' })
+      Announcement.find(publicFilter)
         .skip(skip).limit(limit)
         .populate('createdBy', 'fullName role')
+        .populate('shareToChannels', 'name type identifier')
         .sort({ isPinned: -1, createdAt: -1 }),
-      Announcement.countDocuments({ visibility: 'public', status: 'published' }),
+      Announcement.countDocuments(publicFilter),
     ]);
     return paginated(res, announcements, paginationMeta(total, page, limit));
   } catch (err) { next(err); }

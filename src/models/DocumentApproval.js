@@ -12,6 +12,7 @@ const documentApprovalSchema = new mongoose.Schema(
     signatureUrl: { type: String, default: null },
     comment: { type: String, default: null },
     actionedAt: { type: Date, default: null },
+    allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
   },
   { timestamps: true }
 );

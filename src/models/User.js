@@ -38,6 +38,7 @@ const userSchema = new mongoose.Schema(
       inApp: { type: Boolean, default: true },
     },
     interests: [{ type: String, trim: true }],
+    allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
   },
   {
     timestamps: true,

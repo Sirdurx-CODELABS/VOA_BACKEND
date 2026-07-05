@@ -17,8 +17,10 @@ const activitySchema = new mongoose.Schema({
   targetAgeMin:       { type: Number, default: null },
   targetAgeMax:       { type: Number, default: null },
   customConditions:   { type: String, default: '' },
+  notes:              { type: String, default: '' },
   createdBy:          { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   status:             { type: String, enum: ['draft', 'published', 'ongoing', 'completed', 'cancelled'], default: 'published' },
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Activity', activitySchema);

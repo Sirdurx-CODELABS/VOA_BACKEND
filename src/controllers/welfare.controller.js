@@ -13,7 +13,9 @@ exports.createRequest = async (req, res, next) => {
     if (req.files?.length) {
       attachments = await uploadMany(req.files, 'voa/welfare');
     }
-    const request = await WelfareRequest.create({ type, message, userId: req.user._id, attachments });
+    const welfareData = { type, message, userId: req.user._id, attachments };
+    if (req.allianceOrganizationId) welfareData.allianceOrganizationId = req.allianceOrganizationId;
+    const request = await WelfareRequest.create(welfareData);
 
     const officer = await User.findOne({ role: 'welfare_officer', status: 'active' });
     if (officer) {
@@ -36,6 +38,11 @@ exports.getAllRequests = async (req, res, next) => {
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
     if (req.query.type) filter.type = req.query.type;
+    if (!req.isSuperAdmin) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
     // Members can only see their own
     if (req.user.role === 'member') filter.userId = req.user._id;
 
@@ -52,7 +59,11 @@ exports.getAllRequests = async (req, res, next) => {
 
 exports.getRequestById = async (req, res, next) => {
   try {
-    const request = await WelfareRequest.findById(req.params.id)
+    const welfareFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      welfareFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const request = await WelfareRequest.findOne(welfareFilter)
       .populate('userId', 'fullName email phone')
       .populate('handledBy', 'fullName')
       .populate('followUps.addedBy', 'fullName');
@@ -64,7 +75,11 @@ exports.getRequestById = async (req, res, next) => {
 exports.updateRequestStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
-    const request = await WelfareRequest.findById(req.params.id);
+    const welfareFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      welfareFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const request = await WelfareRequest.findOne(welfareFilter);
     if (!request) return error(res, 'Request not found', 404);
 
     request.status = status;
@@ -87,7 +102,11 @@ exports.updateRequestStatus = async (req, res, next) => {
 
 exports.addFollowUp = async (req, res, next) => {
   try {
-    const request = await WelfareRequest.findById(req.params.id);
+    const welfareFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      welfareFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const request = await WelfareRequest.findOne(welfareFilter);
     if (!request) return error(res, 'Request not found', 404);
 
     request.followUps.push({ note: req.body.note, addedBy: req.user._id });

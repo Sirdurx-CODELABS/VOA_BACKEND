@@ -23,6 +23,11 @@ const teamMemberSchema = new mongoose.Schema({
   isPublic: {
     type: Boolean,
     default: true
+  },
+  allianceOrganizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'AllianceOrganization',
+    default: null
   }
 }, {
   timestamps: true

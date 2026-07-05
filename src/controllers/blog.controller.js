@@ -37,6 +37,11 @@ exports.getAllBlogs = async (req, res, next) => {
     if (req.query.status) filter.status = req.query.status;
     if (req.query.category) filter.category = req.query.category;
     if (req.query.search) filter.title = { $regex: req.query.search, $options: 'i' };
+    if (!req.isSuperAdmin) {
+      if (req.allianceOrganizationId) filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     const [blogs, total] = await Promise.all([
       Blog.find(filter).skip(skip).limit(limit).populate('author', 'fullName role').sort({ createdAt: -1 }),
@@ -48,7 +53,11 @@ exports.getAllBlogs = async (req, res, next) => {
 
 exports.getBlogById = async (req, res, next) => {
   try {
-    const blog = await Blog.findById(req.params.id).populate('author', 'fullName role');
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const blog = await Blog.findOne(query).populate('author', 'fullName role');
     if (!blog) return error(res, 'Blog not found', 404);
     return success(res, blog);
   } catch (err) { next(err); }
@@ -57,6 +66,7 @@ exports.getBlogById = async (req, res, next) => {
 exports.createBlog = async (req, res, next) => {
   try {
     const data = { ...req.body, author: req.user._id };
+    data.allianceOrganizationId = req.allianceOrganizationId;
     
     if (req.file) {
       data.image = await uploadToCloudinary(req.file.path, 'voa/blogs');
@@ -74,7 +84,11 @@ exports.createBlog = async (req, res, next) => {
 
 exports.updateBlog = async (req, res, next) => {
   try {
-    const blog = await Blog.findById(req.params.id);
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const blog = await Blog.findOne(query);
     if (!blog) return error(res, 'Blog not found', 404);
 
     const data = { ...req.body };
@@ -91,7 +105,11 @@ exports.updateBlog = async (req, res, next) => {
 
 exports.deleteBlog = async (req, res, next) => {
   try {
-    const blog = await Blog.findByIdAndDelete(req.params.id);
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const blog = await Blog.findOneAndDelete(query);
     if (!blog) return error(res, 'Blog not found', 404);
     return success(res, null, 'Blog deleted');
   } catch (err) { next(err); }

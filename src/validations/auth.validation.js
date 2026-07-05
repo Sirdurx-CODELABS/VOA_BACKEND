@@ -5,6 +5,8 @@ const register = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(6).required(),
   phone: Joi.string().optional(),
+  allianceOrganizationId: Joi.string().optional(),
+  requestNewOrganization: Joi.string().max(200).optional(),
 });
 
 const login = Joi.object({

@@ -24,7 +24,13 @@ exports.getMyChildren = async (req, res, next) => {
       const allowed = ['super_admin', 'chairman', 'membership_coordinator', 'secretary'];
       if (!allowed.includes(req.user.role)) return error(res, 'Not authorized', 403);
     }
-    const children = await Child.find({ parentId }).sort('childName');
+    const childFilter = { parentId };
+    if (!req.isSuperAdmin) {
+      childFilter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      childFilter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
+    const children = await Child.find(childFilter).sort('childName');
     return success(res, children);
   } catch (err) { next(err); }
 };
@@ -42,7 +48,9 @@ exports.addChild = async (req, res, next) => {
     if (!childName || !childDob) return error(res, 'Child name and date of birth are required', 400);
     if (new Date(childDob) > new Date()) return error(res, 'Date of birth cannot be in the future', 400);
 
-    const child = await Child.create({ parentId, childName, childDob, childGender, relationship });
+    const childData = { parentId, childName, childDob, childGender, relationship };
+    if (req.allianceOrganizationId) childData.allianceOrganizationId = req.allianceOrganizationId;
+    const child = await Child.create(childData);
 
     // Auto-update parent membership type
     await syncParentMembership(parentId);
@@ -54,7 +62,11 @@ exports.addChild = async (req, res, next) => {
 // ─── UPDATE CHILD ─────────────────────────────────────────────────────────────
 exports.updateChild = async (req, res, next) => {
   try {
-    const child = await Child.findById(req.params.childId);
+    const updateChildFilter = { _id: req.params.childId };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      updateChildFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const child = await Child.findOne(updateChildFilter);
     if (!child) return error(res, 'Child record not found', 404);
 
     if (child.parentId.toString() !== req.user._id.toString() &&
@@ -78,7 +90,11 @@ exports.updateChild = async (req, res, next) => {
 // ─── DELETE CHILD ─────────────────────────────────────────────────────────────
 exports.deleteChild = async (req, res, next) => {
   try {
-    const child = await Child.findById(req.params.childId);
+    const deleteChildFilter = { _id: req.params.childId };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      deleteChildFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const child = await Child.findOne(deleteChildFilter);
     if (!child) return error(res, 'Child record not found', 404);
 
     if (child.parentId.toString() !== req.user._id.toString() &&
@@ -100,7 +116,11 @@ exports.deleteChild = async (req, res, next) => {
 // POST /api/children/my/:childId/create-account
 exports.createChildAccount = async (req, res, next) => {
   try {
-    const child = await Child.findById(req.params.childId);
+    const accChildFilter = { _id: req.params.childId };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      accChildFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const child = await Child.findOne(accChildFilter);
     if (!child) return error(res, 'Child record not found', 404);
 
     // Only the parent can create an account for their child

@@ -16,6 +16,7 @@ const contactMessageSchema = new mongoose.Schema(
       },
     ],
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
   },
   { timestamps: true }
 );

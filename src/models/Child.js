@@ -8,6 +8,7 @@ const childSchema = new mongoose.Schema({
   relationship: { type: String, enum: ['son', 'daughter', 'ward', 'other'], default: 'other' },
   hasAccount:   { type: Boolean, default: false },
   linkedUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
 
 // Virtual: child age from DOB

@@ -47,7 +47,13 @@ exports.getMonthlyStatus = async (req, res, next) => {
   try {
     const month = req.query.month || new Date().toISOString().slice(0, 7);
     const record = await getOrCreateMonthlyRecord(req.user._id, month);
-    const installments = await Installment.find({ userId: req.user._id, month })
+    const instFilter = { userId: req.user._id, month };
+    if (!req.isSuperAdmin) {
+      instFilter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      instFilter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
+    const installments = await Installment.find(instFilter)
       .populate('approvedBy', 'fullName')
       .sort('-createdAt');
     return success(res, { record, installments });
@@ -93,7 +99,7 @@ exports.submitInstallment = async (req, res, next) => {
     let proofImage = null;
     if (req.file) proofImage = await uploadToCloudinary(req.file.path, 'voa/contributions');
 
-    const installment = await Installment.create({
+    const installmentData = {
       userId: req.user._id,
       monthlyContributionId: monthlyRecord._id,
       month,
@@ -106,7 +112,9 @@ exports.submitInstallment = async (req, res, next) => {
       proofImage,
       status: 'pending',
       calculatedDueAtSubmission: dueAmount,
-    });
+    };
+    if (req.allianceOrganizationId) installmentData.allianceOrganizationId = req.allianceOrganizationId;
+    const installment = await Installment.create(installmentData);
 
     // Notify treasurer
     const treasurer = await User.findOne({ role: 'treasurer', status: 'active' });
@@ -129,7 +137,11 @@ exports.submitInstallment = async (req, res, next) => {
 // ── Treasurer approves installment ────────────────────────────────────────────
 exports.approveInstallment = async (req, res, next) => {
   try {
-    const inst = await Installment.findById(req.params.id).populate('userId');
+    const approveInstFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      approveInstFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const inst = await Installment.findOne(approveInstFilter).populate('userId');
     if (!inst) return error(res, 'Installment not found', 404);
     if (inst.status !== 'pending') return error(res, 'Already processed', 400);
 
@@ -204,7 +216,11 @@ exports.approveInstallment = async (req, res, next) => {
 exports.rejectInstallment = async (req, res, next) => {
   try {
     const { reason } = req.body;
-    const inst = await Installment.findById(req.params.id).populate('userId');
+    const rejectInstFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      rejectInstFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const inst = await Installment.findOne(rejectInstFilter).populate('userId');
     if (!inst) return error(res, 'Installment not found', 404);
     if (inst.status !== 'pending') return error(res, 'Already processed', 400);
 
@@ -234,6 +250,11 @@ exports.getAllInstallments = async (req, res, next) => {
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
     if (req.query.month) filter.month = req.query.month;
+    if (!req.isSuperAdmin) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     const isTreasurer = ['treasurer', 'chairman', 'super_admin', 'vice_chairman'].includes(req.user.role) || req.user.isVice;
     if (!isTreasurer) {
@@ -267,6 +288,11 @@ exports.getAllMonthlyRecords = async (req, res, next) => {
     const filter = {};
     if (req.query.month) filter.month = req.query.month;
     if (req.query.isCompleted !== undefined) filter.isCompleted = req.query.isCompleted === 'true';
+    if (!req.isSuperAdmin) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     const isTreasurer = ['treasurer', 'chairman', 'super_admin', 'vice_chairman'].includes(req.user.role) || req.user.isVice;
     if (!isTreasurer) {
@@ -293,12 +319,18 @@ exports.getAllMonthlyRecords = async (req, res, next) => {
 exports.getSummary = async (req, res, next) => {
   try {
     const month = req.query.month || new Date().toISOString().slice(0, 7);
+    const summaryFilter = { month };
+    if (!req.isSuperAdmin) {
+      summaryFilter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      summaryFilter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
     const [total, completed, pending, totalRaised, totalRequired] = await Promise.all([
-      MonthlyContribution.countDocuments({ month }),
-      MonthlyContribution.countDocuments({ month, isCompleted: true }),
-      MonthlyContribution.countDocuments({ month, isCompleted: false }),
-      MonthlyContribution.aggregate([{ $match: { month } }, { $group: { _id: null, total: { $sum: '$amountPaid' } } }]),
-      MonthlyContribution.aggregate([{ $match: { month } }, { $group: { _id: null, total: { $sum: '$requiredAmount' } } }]),
+      MonthlyContribution.countDocuments(summaryFilter),
+      MonthlyContribution.countDocuments({ ...summaryFilter, isCompleted: true }),
+      MonthlyContribution.countDocuments({ ...summaryFilter, isCompleted: false }),
+      MonthlyContribution.aggregate([{ $match: summaryFilter }, { $group: { _id: null, total: { $sum: '$amountPaid' } } }]),
+      MonthlyContribution.aggregate([{ $match: summaryFilter }, { $group: { _id: null, total: { $sum: '$requiredAmount' } } }]),
     ]);
     return success(res, {
       month, total, completed, pending,

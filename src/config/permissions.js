@@ -75,6 +75,7 @@ const PERMISSIONS = {
   VIEW_TEAM:                    'view_team',
   MANAGE_CONTACT:               'manage_contact',
   VIEW_CONTACT:                 'view_contact',
+  MANAGE_ORGANIZATION:          'manage_organization',
 };
 
 // Role → permissions map
@@ -97,6 +98,7 @@ const ROLE_PERMISSIONS = {
     'view_gallery', 'manage_gallery',
     'view_team', 'manage_team',
     'view_contact', 'manage_contact',
+    'manage_organization',
   ],
 
   vice_chairman: [
@@ -107,6 +109,7 @@ const ROLE_PERMISSIONS = {
     'manage_announcements', 'post_executive_announcement', 'post_meeting_announcement',
     // Content permissions
     'view_blogs', 'view_events', 'view_projects', 'view_gallery', 'view_team', 'view_contact',
+    'manage_organization',
   ],
 
   secretary: [

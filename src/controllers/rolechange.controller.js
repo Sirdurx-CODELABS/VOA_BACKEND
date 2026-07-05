@@ -19,11 +19,13 @@ exports.create = async (req, res, next) => {
     const target = await User.findById(userId);
     if (!target) return error(res, 'User not found', 404);
 
-    const rcr = await RoleChangeRequest.create({
+    const rcrData = {
       userId, requestedRole, reason,
       initiatedBy: req.user._id,
       membershipCoordinatorApproved: true,
-    });
+    };
+    if (req.allianceOrganizationId) rcrData.allianceOrganizationId = req.allianceOrganizationId;
+    const rcr = await RoleChangeRequest.create(rcrData);
 
     // Notify chairman
     const chairman = await User.findOne({ role: 'chairman', status: 'active' });
@@ -48,6 +50,11 @@ exports.getAll = async (req, res, next) => {
     const { page, limit, skip } = paginate(req.query);
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
+    if (!req.isSuperAdmin) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     const [requests, total] = await Promise.all([
       RoleChangeRequest.find(filter).skip(skip).limit(limit)
@@ -65,7 +72,11 @@ exports.getAll = async (req, res, next) => {
 exports.chairmanDecision = async (req, res, next) => {
   try {
     const { decision, note } = req.body;
-    const rcr = await RoleChangeRequest.findById(req.params.id).populate('userId');
+    const chairRcrFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      chairRcrFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const rcr = await RoleChangeRequest.findOne(chairRcrFilter).populate('userId');
     if (!rcr) return error(res, 'Request not found', 404);
     if (rcr.status !== 'pending_chairman') return error(res, 'Request already processed', 400);
 
@@ -110,7 +121,11 @@ exports.chairmanDecision = async (req, res, next) => {
 // Super admin bypass — direct role change
 exports.superAdminApprove = async (req, res, next) => {
   try {
-    const rcr = await RoleChangeRequest.findById(req.params.id).populate('userId');
+    const saRcrFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      saRcrFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const rcr = await RoleChangeRequest.findOne(saRcrFilter).populate('userId');
     if (!rcr) return error(res, 'Request not found', 404);
 
     rcr.status = 'approved';

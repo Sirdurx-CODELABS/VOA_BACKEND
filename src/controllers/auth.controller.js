@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const User = require('../models/User');
+const AllianceOrganization = require('../models/AllianceOrganization');
 const { generateAccessToken, generateRandomToken } = require('../utils/generateToken');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/email.service');
 const { success, error } = require('../utils/apiResponse');
@@ -13,7 +14,7 @@ const isDev = () => process.env.NODE_ENV !== 'production';
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
 exports.register = async (req, res, next) => {
   try {
-    const { fullName, email, password, phone, gender, dob, address, interests, children } = req.body;
+    const { fullName, email, password, phone, gender, dob, address, interests, children, allianceOrganizationId, requestNewOrganization } = req.body;
 
     const existing = await User.findOne({ email });
     if (existing) {
@@ -26,6 +27,19 @@ exports.register = async (req, res, next) => {
     // Validate DOB if provided
     if (dob && new Date(dob) > new Date()) {
       return error(res, 'Date of birth cannot be in the future', 400);
+    }
+
+    // Resolve organization
+    let orgId = allianceOrganizationId || null;
+    if (!orgId && requestNewOrganization) {
+      const newOrg = await AllianceOrganization.create({
+        organizationName: requestNewOrganization,
+        shortName: requestNewOrganization.substring(0, 20),
+        status: 'pending',
+        organizationType: 'other',
+      });
+      orgId = newOrg._id;
+      logger.info(`New organization requested: ${requestNewOrganization} (${orgId})`);
     }
 
     // Auto-derive membership type from DOB — client-sent membershipType is ignored
@@ -41,6 +55,7 @@ exports.register = async (req, res, next) => {
       membershipType: derivedMembershipType,
       address: address || '',
       interests: Array.isArray(interests) ? interests : [],
+      allianceOrganizationId: orgId,
       isEmailVerified: true,
       status: 'pending',
       role: 'member',
@@ -63,18 +78,20 @@ exports.register = async (req, res, next) => {
       }
     }
 
-    logger.info(`New registration (pending approval): ${email}`);
+    logger.info(`New registration (pending approval): ${email} org=${orgId || 'none'}`);
 
     // Award founding member bonus to first 20 users (fire-and-forget)
     const { awardRegistrationBonus } = require('../services/points.service');
     awardRegistrationBonus(user._id).catch(() => {});
 
-    // Notify membership coordinators and chairman
-    const approvers = await User.find({
+    // Notify org admins, chairman, and membership coordinators
+    const approverFilter = {
       role: { $in: ['super_admin', 'chairman', 'membership_coordinator'] },
       status: 'active',
-    }).select('_id');
+    };
+    if (orgId) approverFilter.allianceOrganizationId = orgId;
 
+    const approvers = await User.find(approverFilter).select('_id');
     const { createNotification } = require('../services/notification.service');
     for (const approver of approvers) {
       createNotification({
@@ -159,11 +176,25 @@ exports.login = async (req, res, next) => {
       return error(res, 'Your account has been deactivated. Please contact the Membership Coordinator.', 403);
     }
 
+    // Block login if user's organization is not active
+    if (user.allianceOrganizationId) {
+      const userOrg = await AllianceOrganization.findById(user.allianceOrganizationId).lean();
+      if (userOrg && userOrg.status !== 'active') {
+        return error(res, 'Your organization\'s account is pending approval by the Super Admin. You will be notified once activated.', 403);
+      }
+    }
+
     const token = generateAccessToken(user._id);
     user.lastActiveAt = new Date();
     await user.save({ validateBeforeSave: false });
 
-    logger.info(`Login: ${user.email} [${user.role}]`);
+    // Load organization data if user belongs to one
+    let organization = null;
+    if (user.allianceOrganizationId) {
+      organization = await AllianceOrganization.findById(user.allianceOrganizationId).lean();
+    }
+
+    logger.info(`Login: ${user.email} [${user.role}] org=${organization?.organizationName || 'none'}`);
 
     return success(res, {
       token,
@@ -191,8 +222,28 @@ exports.login = async (req, res, next) => {
         isFoundingMember: user.isFoundingMember,
         foundingMemberRank: user.foundingMemberRank,
         earlyContributorBonusAwarded: user.earlyContributorBonusAwarded,
+        allianceOrganizationId: user.allianceOrganizationId,
         createdAt: user.createdAt,
       },
+      organization: organization ? {
+        id: organization._id,
+        organizationName: organization.organizationName,
+        shortName: organization.shortName,
+        logo: organization.logo,
+        logoUrl: organization.logoUrl,
+        primaryColor: organization.primaryColor,
+        secondaryColor: organization.secondaryColor,
+        accentColor: organization.accentColor,
+        district: organization.district,
+        state: organization.state,
+        facilityType: organization.facilityType,
+        organizationType: organization.organizationType,
+        address: organization.address,
+        contactEmail: organization.contactEmail,
+        contactPhone: organization.contactPhone,
+        website: organization.website,
+        systemInfo: organization.systemInfo,
+      } : null,
     }, 'Login successful');
   } catch (err) {
     next(err);
@@ -243,7 +294,16 @@ exports.resetPassword = async (req, res, next) => {
 
 // ─── GET ME ───────────────────────────────────────────────────────────────────
 exports.getMe = async (req, res) => {
-  return success(res, req.user);
+  let organization = null;
+  if (req.user.allianceOrganizationId) {
+    organization = await AllianceOrganization.findById(req.user.allianceOrganizationId)
+      .select('organizationName shortName logo logoUrl primaryColor secondaryColor accentColor district state facilityType organizationType address contactEmail contactPhone website systemInfo')
+      .lean();
+  }
+  return success(res, {
+    ...req.user.toObject(),
+    organization,
+  });
 };
 
 // ─── CHANGE PASSWORD ──────────────────────────────────────────────────────────

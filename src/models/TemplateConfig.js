@@ -13,6 +13,7 @@ const templateConfigSchema = new mongoose.Schema({
   isVisible: { type: Boolean, default: true },
   allowedRoles: [{ type: String, enum: ['super_admin', 'chairman', 'vice_chairman', 'secretary',
     'treasurer', 'pro', 'program_coordinator', 'membership_coordinator', 'welfare_officer', 'member'] }],
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('TemplateConfig', templateConfigSchema);

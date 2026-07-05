@@ -22,6 +22,7 @@ const positionApplicationSchema = new mongoose.Schema({
   chairmanDecisionBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   chairmanDecisionNote: { type: String },
   chairmanDecisionAt: { type: Date },
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('PositionApplication', positionApplicationSchema);

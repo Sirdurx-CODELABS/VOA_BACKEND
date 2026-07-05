@@ -9,6 +9,7 @@ const auditLogSchema = new mongoose.Schema({
   details: { type: mongoose.Schema.Types.Mixed },
   ip: { type: String },
   createdAt: { type: Date, default: Date.now },
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 });
 
 auditLogSchema.index({ actor: 1, createdAt: -1 });

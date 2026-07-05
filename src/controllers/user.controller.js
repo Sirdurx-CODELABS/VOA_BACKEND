@@ -42,6 +42,14 @@ exports.getAllUsers = async (req, res, next) => {
   try {
     const { page, limit, skip } = paginate(req.query);
     const filter = {};
+
+    // Organization scoping
+    if (req.isSuperAdmin) {
+      if (req.query.allianceOrganizationId) filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    } else {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+
     if (req.query.role) filter.role = req.query.role;
     if (req.query.status) filter.status = req.query.status;
     if (req.query.membershipType) filter.membershipType = req.query.membershipType;
@@ -60,7 +68,11 @@ exports.getAllUsers = async (req, res, next) => {
 
 exports.getUserById = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id).populate('reportsTo', 'fullName role email');
+    const filter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const user = await User.findOne(filter).populate('reportsTo', 'fullName role email');
     if (!user) return error(res, 'User not found', 404);
     return success(res, user);
   } catch (err) { next(err); }

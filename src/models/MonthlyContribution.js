@@ -16,6 +16,7 @@ const monthlyContributionSchema = new mongoose.Schema({
   calculationSource: { type: String, default: 'auto' },  // 'adolescent' | 'adult' | 'parent_children'
   breakdown:         [{ type: mongoose.Schema.Types.Mixed }], // child breakdown for parents
   targetId:          { type: mongoose.Schema.Types.ObjectId, ref: 'FinanceTarget', default: null },
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

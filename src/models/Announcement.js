@@ -24,6 +24,8 @@ const announcementSchema = new mongoose.Schema({
   attachments:    [{ type: String }],
   isPinned:       { type: Boolean, default: false },
   expiresAt:      { type: Date, default: null },
+  shareToChannels: [{ type: mongoose.Schema.Types.ObjectId, ref: 'SocialChannel' }],
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, { timestamps: true });
 
 announcementSchema.statics.CATEGORIES = CATEGORIES;

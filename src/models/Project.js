@@ -17,6 +17,7 @@ const projectSchema = new mongoose.Schema(
     isPublic: { type: Boolean, default: true },
     impact: { type: String },
     features: [{ type: String }],
+    allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
   },
   { timestamps: true }
 );

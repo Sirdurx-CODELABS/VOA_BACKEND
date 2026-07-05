@@ -50,6 +50,11 @@ const contributionLedgerSchema = new mongoose.Schema({
   lastPaymentDate: {
     type: Date,
     default: null
+  },
+  allianceOrganizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'AllianceOrganization',
+    default: null
   }
 }, {
   timestamps: true

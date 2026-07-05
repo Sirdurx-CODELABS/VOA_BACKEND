@@ -18,6 +18,7 @@ const contributionSchema = new mongoose.Schema({
   rejectionReason:       { type: String, default: '' },
   receiptNumber:         { type: String, default: null },
   pointsAwarded:         { type: Number, default: 0 },
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, { timestamps: true });
 
 contributionSchema.index({ userId: 1, month: 1 }, { unique: true });

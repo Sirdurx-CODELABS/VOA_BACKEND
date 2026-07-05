@@ -15,11 +15,13 @@ exports.submit = async (req, res, next) => {
     });
     if (existing) return error(res, 'You already have a pending application', 409);
 
-    const app = await PositionApplication.create({
+    const positionData = {
       ...req.body,
       applicantId: req.user._id,
       currentRole: req.user.role,
-    });
+    };
+    if (req.allianceOrganizationId) positionData.allianceOrganizationId = req.allianceOrganizationId;
+    const app = await PositionApplication.create(positionData);
 
     // Notify all membership coordinators
     const coordinators = await User.find({ role: 'membership_coordinator', status: 'active' });
@@ -48,6 +50,11 @@ exports.getAll = async (req, res, next) => {
     // Members only see their own
     if (req.user.role === 'member') filter.applicantId = req.user._id;
     if (req.query.status) filter.status = req.query.status;
+    if (!req.isSuperAdmin) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     const [apps, total] = await Promise.all([
       PositionApplication.find(filter).skip(skip).limit(limit)
@@ -63,7 +70,11 @@ exports.getAll = async (req, res, next) => {
 
 exports.getById = async (req, res, next) => {
   try {
-    const app = await PositionApplication.findById(req.params.id)
+    const posFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      posFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const app = await PositionApplication.findOne(posFilter)
       .populate('applicantId', 'fullName email role profileImage engagementScore')
       .populate('membershipReviewBy', 'fullName role')
       .populate('chairmanDecisionBy', 'fullName role');
@@ -76,7 +87,11 @@ exports.getById = async (req, res, next) => {
 exports.membershipReview = async (req, res, next) => {
   try {
     const { decision, note } = req.body;
-    const app = await PositionApplication.findById(req.params.id);
+    const membFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      membFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const app = await PositionApplication.findOne(membFilter);
     if (!app) return error(res, 'Application not found', 404);
     if (app.status !== 'pending_membership_review') return error(res, 'Application is not pending membership review', 400);
 
@@ -127,7 +142,11 @@ exports.membershipReview = async (req, res, next) => {
 exports.chairmanReview = async (req, res, next) => {
   try {
     const { decision, note } = req.body;
-    const app = await PositionApplication.findById(req.params.id).populate('applicantId');
+    const chairFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      chairFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const app = await PositionApplication.findOne(chairFilter).populate('applicantId');
     if (!app) return error(res, 'Application not found', 404);
     if (app.status !== 'pending_chairman_approval') return error(res, 'Application is not pending chairman approval', 400);
 
@@ -170,7 +189,11 @@ exports.chairmanReview = async (req, res, next) => {
 // Super admin direct approve
 exports.superAdminApprove = async (req, res, next) => {
   try {
-    const app = await PositionApplication.findById(req.params.id).populate('applicantId');
+    const saFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      saFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const app = await PositionApplication.findOne(saFilter).populate('applicantId');
     if (!app) return error(res, 'Application not found', 404);
 
     app.status = 'approved';

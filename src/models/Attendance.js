@@ -8,6 +8,7 @@ const attendanceSchema = new mongoose.Schema(
     notes: { type: String },
     recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     timestamp: { type: Date, default: Date.now },
+    allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
   },
   { timestamps: true }
 );

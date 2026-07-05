@@ -1,9 +1,9 @@
 const Notification = require('../models/Notification');
 const logger = require('../utils/logger');
 
-const createNotification = async ({ recipient, title, message, type = 'general', relatedId = null, relatedModel = null, link = null }) => {
+const createNotification = async ({ recipient, title, message, type = 'general', relatedId = null, relatedModel = null, link = null, allianceOrganizationId = null }) => {
   try {
-    return await Notification.create({ recipient, title, message, type, relatedId, relatedModel, link });
+    return await Notification.create({ recipient, title, message, type, relatedId, relatedModel, link, allianceOrganizationId });
   } catch (err) {
     logger.error(`Notification creation failed: ${err.message}`);
   }

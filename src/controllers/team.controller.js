@@ -29,6 +29,12 @@ exports.getAllTeamMembers = async (req, res, next) => {
       filter._id = { $in: matchingIds };
     }
 
+    if (!req.isSuperAdmin) {
+      if (req.allianceOrganizationId) filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
+
     const [members, total] = await Promise.all([
       TeamMember.find(filter)
         .populate('user', 'fullName email role profileImage')
@@ -47,7 +53,11 @@ exports.getAllTeamMembers = async (req, res, next) => {
 // Admin: get single team member
 exports.getTeamMember = async (req, res, next) => {
   try {
-    const member = await TeamMember.findById(req.params.id).populate('user');
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const member = await TeamMember.findOne(query).populate('user');
     if (!member) {
       return error(res, 'Team member not found', 404);
     }
@@ -61,6 +71,7 @@ exports.getTeamMember = async (req, res, next) => {
 exports.createTeamMember = async (req, res, next) => {
   try {
     const data = { ...req.body };
+    data.allianceOrganizationId = req.allianceOrganizationId;
     
     if (req.file) {
       data.photo = await uploadToCloudinary(req.file.path, 'voa/team');
@@ -78,7 +89,11 @@ exports.createTeamMember = async (req, res, next) => {
 // Admin: update team member
 exports.updateTeamMember = async (req, res, next) => {
   try {
-    const member = await TeamMember.findById(req.params.id);
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const member = await TeamMember.findOne(query);
     if (!member) {
       return error(res, 'Team member not found', 404);
     }
@@ -102,7 +117,11 @@ exports.updateTeamMember = async (req, res, next) => {
 // Admin: delete team member
 exports.deleteTeamMember = async (req, res, next) => {
   try {
-    const member = await TeamMember.findByIdAndDelete(req.params.id);
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const member = await TeamMember.findOneAndDelete(query);
     if (!member) {
       return error(res, 'Team member not found', 404);
     }

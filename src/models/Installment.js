@@ -23,6 +23,7 @@ const installmentSchema = new mongoose.Schema({
   pointsAwarded:            { type: Number, default: 0 },
   isExtraPayment:           { type: Boolean, default: false },
   calculatedDueAtSubmission:{ type: Number, default: 0 }, // snapshot of required amount at time of payment
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Installment', installmentSchema);

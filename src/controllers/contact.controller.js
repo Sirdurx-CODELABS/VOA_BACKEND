@@ -26,6 +26,11 @@ exports.getAllContactMessages = async (req, res, next) => {
         { subject: { $regex: req.query.search, $options: 'i' } },
       ];
     }
+    if (!req.isSuperAdmin) {
+      if (req.allianceOrganizationId) filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     const [messages, total] = await Promise.all([
       ContactMessage.find(filter).skip(skip).limit(limit).populate('user', 'fullName email').populate('replies.repliedBy', 'fullName role').sort({ createdAt: -1 }),
@@ -37,7 +42,11 @@ exports.getAllContactMessages = async (req, res, next) => {
 
 exports.getContactMessageById = async (req, res, next) => {
   try {
-    const message = await ContactMessage.findById(req.params.id)
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const message = await ContactMessage.findOne(query)
       .populate('user', 'fullName email phone')
       .populate('replies.repliedBy', 'fullName role');
     if (!message) return error(res, 'Message not found', 404);
@@ -53,7 +62,11 @@ exports.getContactMessageById = async (req, res, next) => {
 
 exports.replyToContactMessage = async (req, res, next) => {
   try {
-    const message = await ContactMessage.findById(req.params.id);
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const message = await ContactMessage.findOne(query);
     if (!message) return error(res, 'Message not found', 404);
 
     const reply = {
@@ -79,7 +92,11 @@ exports.replyToContactMessage = async (req, res, next) => {
 
 exports.updateContactMessageStatus = async (req, res, next) => {
   try {
-    const message = await ContactMessage.findById(req.params.id);
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const message = await ContactMessage.findOne(query);
     if (!message) return error(res, 'Message not found', 404);
     message.status = req.body.status;
     await message.save();
@@ -89,7 +106,11 @@ exports.updateContactMessageStatus = async (req, res, next) => {
 
 exports.deleteContactMessage = async (req, res, next) => {
   try {
-    const message = await ContactMessage.findByIdAndDelete(req.params.id);
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const message = await ContactMessage.findOneAndDelete(query);
     if (!message) return error(res, 'Message not found', 404);
     return success(res, null, 'Message deleted');
   } catch (err) { next(err); }

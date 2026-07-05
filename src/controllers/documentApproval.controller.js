@@ -10,19 +10,23 @@ exports.createApprovals = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'documentId and approvals array required' });
     }
 
-    const doc = await DocumentTemplate.findById(documentId);
+    const docFilter = {};
+    if (!req.isSuperAdmin && req.allianceOrganizationId) docFilter.allianceOrganizationId = req.allianceOrganizationId;
+    const doc = await DocumentTemplate.findOne({ _id: documentId, ...docFilter });
     if (!doc) return res.status(404).json({ success: false, message: 'Document not found' });
 
     const created = [];
     for (const a of approvals) {
-      const approval = await DocumentApproval.create({
+      const approvalData = {
         documentId,
         templateType: doc.templateType,
         role: a.role,
         label: a.label,
         requestedBy: req.user._id,
         assignedTo: a.assignedTo,
-      });
+      };
+      if (req.allianceOrganizationId) approvalData.allianceOrganizationId = req.allianceOrganizationId;
+      const approval = await DocumentApproval.create(approvalData);
       created.push(approval);
     }
 
@@ -39,14 +43,20 @@ exports.getMyPendingApprovals = async (req, res, next) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
+    const approvalFilter = { assignedTo: req.user._id, status: 'pending' };
+    if (!req.isSuperAdmin) {
+      if (req.allianceOrganizationId) approvalFilter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      approvalFilter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
     const [items, total] = await Promise.all([
-      DocumentApproval.find({ assignedTo: req.user._id, status: 'pending' })
+      DocumentApproval.find(approvalFilter)
         .populate('documentId', 'name templateType data pdfUrl status')
         .populate('requestedBy', 'fullName email profileImage')
         .sort('-createdAt')
         .skip(skip)
         .limit(limit),
-      DocumentApproval.countDocuments({ assignedTo: req.user._id, status: 'pending' }),
+      DocumentApproval.countDocuments(approvalFilter),
     ]);
 
     return success(res, {
@@ -58,7 +68,13 @@ exports.getMyPendingApprovals = async (req, res, next) => {
 
 exports.getApprovalsForDocument = async (req, res, next) => {
   try {
-    const approvals = await DocumentApproval.find({ documentId: req.params.id })
+    const filter = { documentId: req.params.id };
+    if (!req.isSuperAdmin) {
+      if (req.allianceOrganizationId) filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
+    const approvals = await DocumentApproval.find(filter)
       .populate('assignedTo', 'fullName email profileImage')
       .populate('requestedBy', 'fullName email profileImage')
       .sort('createdAt');
@@ -68,7 +84,9 @@ exports.getApprovalsForDocument = async (req, res, next) => {
 
 exports.approve = async (req, res, next) => {
   try {
-    const approval = await DocumentApproval.findById(req.params.id);
+    const orgFilter = {};
+    if (!req.isSuperAdmin && req.allianceOrganizationId) orgFilter.allianceOrganizationId = req.allianceOrganizationId;
+    const approval = await DocumentApproval.findOne({ _id: req.params.id, ...orgFilter });
     if (!approval) return res.status(404).json({ success: false, message: 'Approval not found' });
     if (approval.assignedTo.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, message: 'Not assigned to you' });
@@ -83,7 +101,9 @@ exports.approve = async (req, res, next) => {
     approval.actionedAt = new Date();
     await approval.save();
 
-    const doc = await DocumentTemplate.findById(approval.documentId);
+    const docOrgFilter = {};
+    if (!req.isSuperAdmin && req.allianceOrganizationId) docOrgFilter.allianceOrganizationId = req.allianceOrganizationId;
+    const doc = await DocumentTemplate.findOne({ _id: approval.documentId, ...docOrgFilter });
     if (doc) {
       const { setValue } = require('../utils/dotProp');
       if (approval.role === 'chairman' || approval.role === 'executive_director') {
@@ -116,7 +136,9 @@ exports.approve = async (req, res, next) => {
 
 exports.reject = async (req, res, next) => {
   try {
-    const approval = await DocumentApproval.findById(req.params.id);
+    const orgFilter = {};
+    if (!req.isSuperAdmin && req.allianceOrganizationId) orgFilter.allianceOrganizationId = req.allianceOrganizationId;
+    const approval = await DocumentApproval.findOne({ _id: req.params.id, ...orgFilter });
     if (!approval) return res.status(404).json({ success: false, message: 'Approval not found' });
     if (approval.assignedTo.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, message: 'Not assigned to you' });
@@ -130,7 +152,9 @@ exports.reject = async (req, res, next) => {
     approval.actionedAt = new Date();
     await approval.save();
 
-    const doc = await DocumentTemplate.findById(approval.documentId);
+    const docOrgFilter = {};
+    if (!req.isSuperAdmin && req.allianceOrganizationId) docOrgFilter.allianceOrganizationId = req.allianceOrganizationId;
+    const doc = await DocumentTemplate.findOne({ _id: approval.documentId, ...docOrgFilter });
     if (doc) {
       doc.status = 'rejected';
       await doc.save();
@@ -149,7 +173,13 @@ exports.reject = async (req, res, next) => {
 
 exports.getPendingCount = async (req, res, next) => {
   try {
-    const count = await DocumentApproval.countDocuments({ assignedTo: req.user._id, status: 'pending' });
+    const countFilter = { assignedTo: req.user._id, status: 'pending' };
+    if (!req.isSuperAdmin) {
+      if (req.allianceOrganizationId) countFilter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      countFilter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
+    const count = await DocumentApproval.countDocuments(countFilter);
     return success(res, { count });
   } catch (err) { next(err); }
 };

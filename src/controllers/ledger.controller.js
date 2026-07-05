@@ -25,6 +25,12 @@ exports.getAllLedgers = async (req, res, next) => {
     const { page, limit, skip } = paginate(req.query);
     const filter = {};
     
+    if (!req.isSuperAdmin) {
+      if (req.allianceOrganizationId) filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
+    
     if (req.query.membershipType) filter.membershipType = req.query.membershipType;
     if (req.query.status) filter.status = req.query.status;
 
@@ -107,7 +113,7 @@ exports.addManualPayment = async (req, res, next) => {
       : new Date().toISOString().slice(0, 7);
 
     // Create installment
-    const installment = await Installment.create({
+    const installmentData = {
       userId: memberId || null,
       externalMemberName: externalMemberName || null,
       amount: parseFloat(amount),
@@ -118,7 +124,9 @@ exports.addManualPayment = async (req, res, next) => {
       approvedBy: req.user._id,
       approvedAt: paymentDate ? new Date(paymentDate) : new Date(),
       receiptNumber: finalReceiptNumber
-    });
+    };
+    if (req.allianceOrganizationId) installmentData.allianceOrganizationId = req.allianceOrganizationId;
+    const installment = await Installment.create(installmentData);
 
     // If it's a platform member, update ledger
     if (memberId && member) {
@@ -138,15 +146,19 @@ exports.addManualPayment = async (req, res, next) => {
     // Handle target allocations
     if (targetAllocations && targetAllocations.length > 0) {
       for (const allocation of targetAllocations) {
-        await TargetAllocation.create({
+        const allocData = {
           paymentId: installment._id,
           targetId: allocation.targetId,
           amount: parseFloat(allocation.amount),
-          allocatedBy: req.user._id
-        });
+          allocatedBy: req.user._id,
+        };
+        if (req.allianceOrganizationId) allocData.allianceOrganizationId = req.allianceOrganizationId;
+        await TargetAllocation.create(allocData);
 
         // Update target
-        const target = await FinanceTarget.findById(allocation.targetId);
+        const targetFilter = {};
+        if (!req.isSuperAdmin && req.allianceOrganizationId) targetFilter.allianceOrganizationId = req.allianceOrganizationId;
+        const target = await FinanceTarget.findOne({ _id: allocation.targetId, ...targetFilter });
         if (target) {
           target.amountRaised += parseFloat(allocation.amount);
           if (target.amountRaised >= target.targetAmount && !target.isCompleted) {
@@ -252,14 +264,18 @@ exports.allocateToTargets = async (req, res, next) => {
     const { paymentId, allocations } = req.body;
 
     for (const allocation of allocations) {
-      await TargetAllocation.create({
+      const allocData = {
         paymentId,
         targetId: allocation.targetId,
         amount: parseFloat(allocation.amount),
-        allocatedBy: req.user._id
-      });
+        allocatedBy: req.user._id,
+      };
+      if (req.allianceOrganizationId) allocData.allianceOrganizationId = req.allianceOrganizationId;
+      await TargetAllocation.create(allocData);
 
-      const target = await FinanceTarget.findById(allocation.targetId);
+      const targetFilter = {};
+      if (!req.isSuperAdmin && req.allianceOrganizationId) targetFilter.allianceOrganizationId = req.allianceOrganizationId;
+      const target = await FinanceTarget.findOne({ _id: allocation.targetId, ...targetFilter });
       if (target) {
         target.amountRaised += parseFloat(allocation.amount);
         if (target.amountRaised >= target.targetAmount && !target.isCompleted) {
@@ -397,7 +413,13 @@ exports.exportFinanceData = async (req, res, next) => {
     let filename = '';
     
     if (type === 'ledgers') {
-      const ledgers = await ContributionLedger.find()
+      const ledgerFilter = {};
+      if (!req.isSuperAdmin) {
+        if (req.allianceOrganizationId) ledgerFilter.allianceOrganizationId = req.allianceOrganizationId;
+      } else if (req.query.allianceOrganizationId) {
+        ledgerFilter.allianceOrganizationId = req.query.allianceOrganizationId;
+      }
+      const ledgers = await ContributionLedger.find(ledgerFilter)
         .populate('memberId', 'fullName email membershipType phone')
         .sort('-updatedAt');
       
@@ -418,7 +440,13 @@ exports.exportFinanceData = async (req, res, next) => {
       
       filename = `voa-member-ledgers-${new Date().toISOString().slice(0,10)}`;
     } else if (type === 'payments') {
-      const payments = await Installment.find()
+      const paymentFilter = {};
+      if (!req.isSuperAdmin) {
+        if (req.allianceOrganizationId) paymentFilter.allianceOrganizationId = req.allianceOrganizationId;
+      } else if (req.query.allianceOrganizationId) {
+        paymentFilter.allianceOrganizationId = req.query.allianceOrganizationId;
+      }
+      const payments = await Installment.find(paymentFilter)
         .populate('userId', 'fullName')
         .sort('-createdAt');
       
@@ -436,7 +464,13 @@ exports.exportFinanceData = async (req, res, next) => {
       
       filename = `voa-payments-${new Date().toISOString().slice(0,10)}`;
     } else if (type === 'targets') {
-      const targets = await FinanceTarget.find().sort('-createdAt');
+      const targetFilter = {};
+      if (!req.isSuperAdmin) {
+        if (req.allianceOrganizationId) targetFilter.allianceOrganizationId = req.allianceOrganizationId;
+      } else if (req.query.allianceOrganizationId) {
+        targetFilter.allianceOrganizationId = req.query.allianceOrganizationId;
+      }
+      const targets = await FinanceTarget.find(targetFilter).sort('-createdAt');
       
       data = targets.map(t => ({
         'Target Name': t.title,

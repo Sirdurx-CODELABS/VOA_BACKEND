@@ -9,13 +9,15 @@ exports.createDocumentTemplate = async (req, res, next) => {
     const { name, templateType, data, pdfUrl } = req.body;
     const userId = req.user._id;
 
-    const documentTemplate = await DocumentTemplate.create({
+    const templateData = {
       name,
       templateType,
       userId,
       data,
       pdfUrl
-    });
+    };
+    if (req.allianceOrganizationId) templateData.allianceOrganizationId = req.allianceOrganizationId;
+    const documentTemplate = await DocumentTemplate.create(templateData);
 
     logger.info(`New document template created: ${templateType} by ${userId}`);
     return success(res, documentTemplate, 'Document template created successfully!', 201);
@@ -29,6 +31,11 @@ exports.getDocumentTemplatesByUser = async (req, res, next) => {
     const userId = req.user._id;
     const userRole = req.user.role;
     const filter = (userRole === 'super_admin' || userRole === 'chairman') ? {} : { userId };
+    if (!req.isSuperAdmin) {
+      if (req.allianceOrganizationId) filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
     const { page, limit, skip } = paginate(req.query);
     const [templates, total] = await Promise.all([
       DocumentTemplate.find(filter, { data: 0 })
@@ -47,7 +54,9 @@ exports.getDocumentTemplatesByUser = async (req, res, next) => {
 exports.getDocumentTemplateById = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const documentTemplate = await DocumentTemplate.findById(id);
+    const orgFilter = {};
+    if (!req.isSuperAdmin && req.allianceOrganizationId) orgFilter.allianceOrganizationId = req.allianceOrganizationId;
+    const documentTemplate = await DocumentTemplate.findOne({ _id: id, ...orgFilter });
     if (!documentTemplate) {
       return error(res, 'Document template not found!', 404);
     }
@@ -73,7 +82,9 @@ exports.updateDocumentTemplate = async (req, res, next) => {
     const { name, data, pdfUrl } = req.body;
     const userId = req.user._id;
 
-    const documentTemplate = await DocumentTemplate.findById(id);
+    const orgFilter = {};
+    if (!req.isSuperAdmin && req.allianceOrganizationId) orgFilter.allianceOrganizationId = req.allianceOrganizationId;
+    const documentTemplate = await DocumentTemplate.findOne({ _id: id, ...orgFilter });
     if (!documentTemplate) {
       return error(res, 'Document template not found!', 404);
     }
@@ -98,7 +109,9 @@ exports.deleteDocumentTemplate = async (req, res, next) => {
     const { id } = req.params;
     const userId = req.user._id;
 
-    const documentTemplate = await DocumentTemplate.findById(id);
+    const orgFilter = {};
+    if (!req.isSuperAdmin && req.allianceOrganizationId) orgFilter.allianceOrganizationId = req.allianceOrganizationId;
+    const documentTemplate = await DocumentTemplate.findOne({ _id: id, ...orgFilter });
     if (!documentTemplate) {
       return error(res, 'Document template not found!', 404);
     }
@@ -117,13 +130,19 @@ exports.deleteDocumentTemplate = async (req, res, next) => {
 exports.getAllDocumentTemplates = async (req, res, next) => {
   try {
     const { page, limit, skip } = paginate(req.query);
+    const filter = {};
+    if (!req.isSuperAdmin) {
+      if (req.allianceOrganizationId) filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
     const [templates, total] = await Promise.all([
-      DocumentTemplate.find({}, { data: 0 })
+      DocumentTemplate.find(filter, { data: 0 })
         .skip(skip).limit(limit)
         .populate('userId', 'fullName email role')
         .sort({ createdAt: -1 })
         .lean(),
-      DocumentTemplate.countDocuments(),
+      DocumentTemplate.countDocuments(filter),
     ]);
     return paginated(res, templates, paginationMeta(total, page, limit), 'All document templates retrieved');
   } catch (err) { next(err); }
@@ -134,7 +153,9 @@ exports.copyDocumentTemplate = async (req, res, next) => {
     const { id } = req.params;
     const userId = req.user._id;
 
-    const documentTemplate = await DocumentTemplate.findById(id);
+    const orgFilter = {};
+    if (!req.isSuperAdmin && req.allianceOrganizationId) orgFilter.allianceOrganizationId = req.allianceOrganizationId;
+    const documentTemplate = await DocumentTemplate.findOne({ _id: id, ...orgFilter });
     if (!documentTemplate) {
       return error(res, 'Document template not found!', 404);
     }
@@ -143,13 +164,15 @@ exports.copyDocumentTemplate = async (req, res, next) => {
     }
 
     // Create copy
-    const copy = await DocumentTemplate.create({
+    const copyData = {
       name: `${documentTemplate.name} (Copy)`,
       templateType: documentTemplate.templateType,
       userId,
       data: documentTemplate.data,
       pdfUrl: documentTemplate.pdfUrl
-    });
+    };
+    if (req.allianceOrganizationId) copyData.allianceOrganizationId = req.allianceOrganizationId;
+    const copy = await DocumentTemplate.create(copyData);
 
     logger.info(`Document template copied: ${id} to ${copy._id} by ${userId}`);
     return success(res, copy, 'Document template copied successfully!', 201);

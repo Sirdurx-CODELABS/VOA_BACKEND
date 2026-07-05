@@ -10,6 +10,7 @@ const pointTransactionSchema = new mongoose.Schema({
   source:      { type: String, default: '' },   // human-readable description
   points:      { type: Number, required: true },
   referenceId: { type: mongoose.Schema.Types.ObjectId, default: null }, // contribution/program id
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, { timestamps: true });
 
 pointTransactionSchema.index({ userId: 1, createdAt: -1 });

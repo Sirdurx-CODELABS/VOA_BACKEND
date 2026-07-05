@@ -20,6 +20,7 @@ exports.getUsers = async (req, res, next) => {
   try {
     const { page, limit, skip } = paginate(req.query);
     const filter = {};
+    if (req.query.allianceOrganizationId) filter.allianceOrganizationId = req.query.allianceOrganizationId;
     if (req.query.role) filter.role = req.query.role;
     if (req.query.status) filter.status = req.query.status;
     if (req.query.search) filter.$or = [
@@ -124,6 +125,7 @@ exports.getPrograms = async (req, res, next) => {
   try {
     const { page, limit, skip } = paginate(req.query);
     const filter = {};
+    if (req.query.allianceOrganizationId) filter.allianceOrganizationId = req.query.allianceOrganizationId;
     if (req.query.status) filter.status = req.query.status;
     if (req.query.search) filter.title = { $regex: req.query.search, $options: 'i' };
     const [programs, total] = await Promise.all([
@@ -136,7 +138,7 @@ exports.getPrograms = async (req, res, next) => {
 
 exports.createProgram = async (req, res, next) => {
   try {
-    const program = await Program.create({ ...req.body, createdBy: req.user._id });
+    const program = await Program.create({ ...req.body, createdBy: req.user._id, allianceOrganizationId: req.body.allianceOrganizationId || req.allianceOrganizationId });
     await log({ actor: req.user, action: 'CREATE_PROGRAM', entity: 'Program', entityId: program._id, details: { title: program.title }, ip: req.ip });
     return success(res, program, 'Program created', 201);
   } catch (err) { next(err); }
@@ -166,6 +168,7 @@ exports.getTransactions = async (req, res, next) => {
   try {
     const { page, limit, skip } = paginate(req.query);
     const filter = {};
+    if (req.query.allianceOrganizationId) filter.allianceOrganizationId = req.query.allianceOrganizationId;
     if (req.query.type) filter.type = req.query.type;
     if (req.query.status) filter.status = req.query.status;
     const [txs, total] = await Promise.all([
@@ -200,6 +203,7 @@ exports.getWelfare = async (req, res, next) => {
   try {
     const { page, limit, skip } = paginate(req.query);
     const filter = {};
+    if (req.query.allianceOrganizationId) filter.allianceOrganizationId = req.query.allianceOrganizationId;
     if (req.query.status) filter.status = req.query.status;
     const [requests, total] = await Promise.all([
       WelfareRequest.find(filter).skip(skip).limit(limit).populate('userId', 'fullName email').populate('handledBy', 'fullName').sort('-createdAt'),
@@ -255,6 +259,7 @@ exports.getAuditLogs = async (req, res, next) => {
   try {
     const { page, limit, skip } = paginate(req.query);
     const filter = {};
+    if (req.query.allianceOrganizationId) filter.allianceOrganizationId = req.query.allianceOrganizationId;
     if (req.query.action) filter.action = req.query.action;
     if (req.query.entity) filter.entity = req.query.entity;
     const [logs, total] = await Promise.all([
@@ -269,12 +274,13 @@ exports.getAuditLogs = async (req, res, next) => {
 
 exports.getSystemStats = async (req, res, next) => {
   try {
+    const orgFilter = req.query.allianceOrganizationId ? { allianceOrganizationId: req.query.allianceOrganizationId } : {};
     const [users, programs, transactions, welfare, logs] = await Promise.all([
-      User.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
-      Program.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
-      Transaction.aggregate([{ $group: { _id: '$type', total: { $sum: '$amount' } } }]),
-      WelfareRequest.countDocuments({ status: 'pending' }),
-      AuditLog.countDocuments(),
+      User.aggregate([{ $match: orgFilter }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Program.aggregate([{ $match: orgFilter }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Transaction.aggregate([{ $match: orgFilter }, { $group: { _id: '$type', total: { $sum: '$amount' } } }]),
+      WelfareRequest.countDocuments({ ...orgFilter, status: 'pending' }),
+      AuditLog.countDocuments(orgFilter),
     ]);
     return success(res, { users, programs, transactions, pendingWelfare: welfare, totalAuditLogs: logs });
   } catch (err) { next(err); }

@@ -24,6 +24,11 @@ const targetAllocationSchema = new mongoose.Schema({
   allocatedAt: {
     type: Date,
     default: Date.now
+  },
+  allianceOrganizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'AllianceOrganization',
+    default: null
   }
 }, {
   timestamps: true

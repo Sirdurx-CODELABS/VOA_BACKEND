@@ -54,6 +54,11 @@ exports.getAllEvents = async (req, res, next) => {
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
     if (req.query.search) filter.title = { $regex: req.query.search, $options: 'i' };
+    if (!req.isSuperAdmin) {
+      if (req.allianceOrganizationId) filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     const [events, total] = await Promise.all([
       Event.find(filter).skip(skip).limit(limit).populate('createdBy', 'fullName role').populate('attendees', 'fullName email').sort({ date: -1 }),
@@ -65,7 +70,11 @@ exports.getAllEvents = async (req, res, next) => {
 
 exports.getEventById = async (req, res, next) => {
   try {
-    const event = await Event.findById(req.params.id)
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const event = await Event.findOne(query)
       .populate('createdBy', 'fullName role')
       .populate('attendees', 'fullName email phone');
     if (!event) return error(res, 'Event not found', 404);
@@ -76,6 +85,7 @@ exports.getEventById = async (req, res, next) => {
 exports.createEvent = async (req, res, next) => {
   try {
     const data = { ...req.body, createdBy: req.user._id };
+    data.allianceOrganizationId = req.allianceOrganizationId;
     
     if (req.files && req.files.images) {
       const files = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
@@ -97,7 +107,11 @@ exports.createEvent = async (req, res, next) => {
 
 exports.updateEvent = async (req, res, next) => {
   try {
-    const event = await Event.findById(req.params.id);
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const event = await Event.findOne(query);
     if (!event) return error(res, 'Event not found', 404);
 
     const data = { ...req.body };
@@ -122,7 +136,11 @@ exports.updateEvent = async (req, res, next) => {
 
 exports.deleteEvent = async (req, res, next) => {
   try {
-    const event = await Event.findByIdAndDelete(req.params.id);
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const event = await Event.findOneAndDelete(query);
     if (!event) return error(res, 'Event not found', 404);
     return success(res, null, 'Event deleted');
   } catch (err) { next(err); }

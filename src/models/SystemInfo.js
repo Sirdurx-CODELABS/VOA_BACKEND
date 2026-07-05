@@ -15,6 +15,7 @@ const systemInfoSchema = new mongoose.Schema({
     tiktok: { type: String, default: '' },
   },
   documentSystemUrl: { type: String, default: 'http://localhost:5173' },
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('SystemInfo', systemInfoSchema);

@@ -8,6 +8,7 @@ const reportSchema = new mongoose.Schema(
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     attachments: [{ type: String }], // file URLs
     type: { type: String, enum: ['meeting_minutes', 'event_report', 'general'], default: 'general' },
+    allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
   },
   { timestamps: true }
 );

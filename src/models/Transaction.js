@@ -12,6 +12,7 @@ const transactionSchema = new mongoose.Schema(
     approvedAt: { type: Date, default: null },
     description: { type: String },
     receiptUrl: { type: String },
+    allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
   },
   { timestamps: true }
 );

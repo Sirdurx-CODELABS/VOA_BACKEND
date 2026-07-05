@@ -16,6 +16,7 @@ const financeTargetSchema = new mongoose.Schema({
   completedAt:    { type: Date, default: null },
   isActive:       { type: Boolean, default: true },
   createdBy:      { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

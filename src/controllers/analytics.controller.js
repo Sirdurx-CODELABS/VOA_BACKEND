@@ -9,14 +9,17 @@ const { createNotification, notifyMany } = require('../services/notification.ser
 
 exports.getMemberStats = async (req, res, next) => {
   try {
+    const orgFilter = req.isSuperAdmin && !req.query.allianceOrganizationId ? {} : { allianceOrganizationId: req.allianceOrganizationId };
+    const childFilter = orgFilter.allianceOrganizationId ? { allianceOrganizationId: orgFilter.allianceOrganizationId } : {};
+
     const [active, inactive, pending, total, byRole, byMembershipType, totalChildren] = await Promise.all([
-      User.countDocuments({ status: 'active' }),
-      User.countDocuments({ status: 'inactive' }),
-      User.countDocuments({ status: 'pending' }),
-      User.countDocuments(),
-      User.aggregate([{ $group: { _id: '$role', count: { $sum: 1 } } }]),
-      User.aggregate([{ $group: { _id: '$membershipType', count: { $sum: 1 } } }]),
-      Child.countDocuments(),
+      User.countDocuments({ ...orgFilter, status: 'active' }),
+      User.countDocuments({ ...orgFilter, status: 'inactive' }),
+      User.countDocuments({ ...orgFilter, status: 'pending' }),
+      User.countDocuments(orgFilter),
+      User.aggregate([{ $match: orgFilter }, { $group: { _id: '$role', count: { $sum: 1 } } }]),
+      User.aggregate([{ $match: orgFilter }, { $group: { _id: '$membershipType', count: { $sum: 1 } } }]),
+      Child.countDocuments(childFilter),
     ]);
     return success(res, { total, active, inactive, pending, byRole, byMembershipType, totalChildren });
   } catch (err) { next(err); }
@@ -25,7 +28,11 @@ exports.getMemberStats = async (req, res, next) => {
 exports.getLeaderboard = async (req, res, next) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    const leaders = await User.find({ status: 'active' })
+    const filter = { status: 'active' };
+    if (!req.isSuperAdmin || req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const leaders = await User.find(filter)
       .sort('-engagementScore')
       .limit(limit)
       .select('fullName role engagementScore profileImage');
@@ -35,17 +42,24 @@ exports.getLeaderboard = async (req, res, next) => {
 
 exports.getProgramMetrics = async (req, res, next) => {
   try {
+    const orgFilter = req.isSuperAdmin && !req.query.allianceOrganizationId ? {} : { allianceOrganizationId: req.allianceOrganizationId };
+
     const [upcoming, ongoing, completed, total] = await Promise.all([
-      Program.countDocuments({ status: 'upcoming' }),
-      Program.countDocuments({ status: 'ongoing' }),
-      Program.countDocuments({ status: 'completed' }),
-      Program.countDocuments(),
+      Program.countDocuments({ ...orgFilter, status: 'upcoming' }),
+      Program.countDocuments({ ...orgFilter, status: 'ongoing' }),
+      Program.countDocuments({ ...orgFilter, status: 'completed' }),
+      Program.countDocuments(orgFilter),
     ]);
 
-    // Attendance rate across all programs
+    // Find program IDs for this org to scope attendance
+    const programIds = orgFilter.allianceOrganizationId
+      ? (await Program.find(orgFilter).select('_id').lean()).map(p => p._id)
+      : null;
+    const attendanceFilter = programIds ? { programId: { $in: programIds } } : {};
+
     const [present, totalAtt] = await Promise.all([
-      Attendance.countDocuments({ status: 'present' }),
-      Attendance.countDocuments(),
+      Attendance.countDocuments({ ...attendanceFilter, status: 'present' }),
+      Attendance.countDocuments(attendanceFilter),
     ]);
 
     return success(res, {
@@ -79,11 +93,19 @@ exports.alertInactiveUsers = async (req, res, next) => {
 
 exports.getDashboardSummary = async (req, res, next) => {
   try {
+    const orgFilter = req.isSuperAdmin && !req.query.allianceOrganizationId ? {} : { allianceOrganizationId: req.allianceOrganizationId };
+    const txFilter = orgFilter.allianceOrganizationId
+      ? { ...orgFilter, type: 'income', status: 'approved' }
+      : { type: 'income', status: 'approved' };
+    const expenseFilter = orgFilter.allianceOrganizationId
+      ? { ...orgFilter, type: 'expense', status: 'approved' }
+      : { type: 'expense', status: 'approved' };
+
     const [members, programs, income, expense] = await Promise.all([
-      User.countDocuments({ status: 'active' }),
-      Program.countDocuments(),
-      Transaction.aggregate([{ $match: { type: 'income', status: 'approved' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
-      Transaction.aggregate([{ $match: { type: 'expense', status: 'approved' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+      User.countDocuments({ ...orgFilter, status: 'active' }),
+      Program.countDocuments(orgFilter),
+      Transaction.aggregate([{ $match: txFilter }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+      Transaction.aggregate([{ $match: expenseFilter }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
     ]);
 
     return success(res, {
@@ -186,15 +208,16 @@ exports.getMyDashboard = async (req, res, next) => {
     let roleData = {};
 
     if (['super_admin', 'chairman', 'vice_chairman'].includes(role)) {
+      const orgFilter = req.isSuperAdmin && !req.query.allianceOrganizationId ? {} : { allianceOrganizationId: req.allianceOrganizationId };
       const [totalMembers, activeMembers, pendingMembers, totalContribMonth, completedContrib,
         pendingInstallments, totalIncome, totalExpense, pendingWelfare] = await Promise.all([
-        User.countDocuments(),
-        User.countDocuments({ status: 'active' }),
-        User.countDocuments({ status: 'pending' }),
-        MonthlyContribution.aggregate([{ $match: { month: currentMonth } }, { $group: { _id: null, total: { $sum: '$amountPaid' } } }]),
-        MonthlyContribution.countDocuments({ month: currentMonth, isCompleted: true }),
-        Installment.countDocuments({ status: 'pending' }),
-        Transaction.aggregate([{ $match: { type: 'income', status: 'approved' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+        User.countDocuments(orgFilter),
+        User.countDocuments({ ...orgFilter, status: 'active' }),
+        User.countDocuments({ ...orgFilter, status: 'pending' }),
+        MonthlyContribution.aggregate([{ $match: { ...orgFilter, month: currentMonth } }, { $group: { _id: null, total: { $sum: '$amountPaid' } } }]),
+        MonthlyContribution.countDocuments({ ...orgFilter, month: currentMonth, isCompleted: true }),
+        Installment.countDocuments({ ...orgFilter, status: 'pending' }),
+        Transaction.aggregate([{ $match: { ...orgFilter, type: 'income', status: 'approved' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
         Transaction.aggregate([{ $match: { type: 'expense', status: 'approved' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
         WelfareRequest.countDocuments({ status: 'pending' }),
       ]);

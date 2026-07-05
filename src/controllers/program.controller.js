@@ -7,6 +7,7 @@ const { uploadToCloudinary } = require('../services/upload.service');
 exports.createProgram = async (req, res, next) => {
   try {
     const data = { ...req.body, createdBy: req.user._id };
+    if (req.allianceOrganizationId) data.allianceOrganizationId = req.allianceOrganizationId;
     
     // Handle images upload
     if (req.files && req.files.images) {
@@ -41,6 +42,14 @@ exports.getAllPrograms = async (req, res, next) => {
   try {
     const { page, limit, skip } = paginate(req.query);
     const filter = {};
+
+    // Organization scoping
+    if (req.isSuperAdmin) {
+      if (req.query.allianceOrganizationId) filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    } else {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+
     if (req.query.status) filter.status = req.query.status;
     if (req.query.search) filter.title = { $regex: req.query.search, $options: 'i' };
 
@@ -69,7 +78,11 @@ exports.getPublicPrograms = async (req, res, next) => {
 
 exports.getProgramById = async (req, res, next) => {
   try {
-    const program = await Program.findById(req.params.id)
+    const filter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const program = await Program.findOne(filter)
       .populate('createdBy', 'fullName role')
       .populate('assignedMembers', 'fullName email phone');
     if (!program) return error(res, 'Program not found', 404);

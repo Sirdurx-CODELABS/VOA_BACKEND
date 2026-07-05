@@ -6,7 +6,9 @@ const activityMediaSchema = new mongoose.Schema({
   uploadedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   imageUrl:    { type: String, required: true },
   caption:     { type: String, default: '' },
-  shareToken:  { type: String, unique: true, default: () => crypto.randomBytes(16).toString('hex') },
+  shareToken:    { type: String, unique: true, default: () => crypto.randomBytes(16).toString('hex') },
+  showOnWebsite: { type: Boolean, default: false },
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('ActivityMedia', activityMediaSchema);

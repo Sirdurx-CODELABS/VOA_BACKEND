@@ -16,6 +16,7 @@ const welfareRequestSchema = new mongoose.Schema(
     attachments: [{ type: String }],
     followUps: [followUpSchema],
     resolvedAt: { type: Date, default: null },
+    allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
   },
   { timestamps: true }
 );

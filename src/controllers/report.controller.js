@@ -9,7 +9,9 @@ exports.createReport = async (req, res, next) => {
     if (req.files?.length) {
       attachments = await uploadMany(req.files, 'voa/reports');
     }
-    const report = await Report.create({ ...req.body, createdBy: req.user._id, attachments });
+    const reportData = { ...req.body, createdBy: req.user._id, attachments };
+    if (req.allianceOrganizationId) reportData.allianceOrganizationId = req.allianceOrganizationId;
+    const report = await Report.create(reportData);
     return success(res, report, 'Report created', 201);
   } catch (err) { next(err); }
 };
@@ -20,6 +22,11 @@ exports.getAllReports = async (req, res, next) => {
     const filter = {};
     if (req.query.programId) filter.programId = req.query.programId;
     if (req.query.type) filter.type = req.query.type;
+    if (!req.isSuperAdmin) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     const [reports, total] = await Promise.all([
       Report.find(filter).skip(skip).limit(limit)
@@ -34,7 +41,11 @@ exports.getAllReports = async (req, res, next) => {
 
 exports.getReportById = async (req, res, next) => {
   try {
-    const report = await Report.findById(req.params.id)
+    const reportFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      reportFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const report = await Report.findOne(reportFilter)
       .populate('createdBy', 'fullName role')
       .populate('programId', 'title date');
     if (!report) return error(res, 'Report not found', 404);
@@ -44,7 +55,11 @@ exports.getReportById = async (req, res, next) => {
 
 exports.updateReport = async (req, res, next) => {
   try {
-    const report = await Report.findById(req.params.id);
+    const reportFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      reportFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const report = await Report.findOne(reportFilter);
     if (!report) return error(res, 'Report not found', 404);
     if (report.createdBy.toString() !== req.user._id.toString() && req.user.role !== 'chairman') {
       return error(res, 'Not authorized', 403);
@@ -57,7 +72,11 @@ exports.updateReport = async (req, res, next) => {
 
 exports.deleteReport = async (req, res, next) => {
   try {
-    const report = await Report.findByIdAndDelete(req.params.id);
+    const delFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      delFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const report = await Report.findOneAndDelete(delFilter);
     if (!report) return error(res, 'Report not found', 404);
     return success(res, null, 'Report deleted');
   } catch (err) { next(err); }

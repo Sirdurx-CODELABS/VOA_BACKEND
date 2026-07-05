@@ -28,7 +28,9 @@ exports.recordAttendance = async (req, res, next) => {
       return success(res, existing, 'Attendance updated');
     }
 
-    const attendance = await Attendance.create({ userId, programId, status, notes, recordedBy: req.user._id });
+    const attData = { userId, programId, status, notes, recordedBy: req.user._id };
+    if (req.allianceOrganizationId) attData.allianceOrganizationId = req.allianceOrganizationId;
+    const attendance = await Attendance.create(attData);
     await updateEngagementScore(userId, status);
     return success(res, attendance, 'Attendance recorded', 201);
   } catch (err) { next(err); }
@@ -42,9 +44,11 @@ exports.bulkRecordAttendance = async (req, res, next) => {
 
     const results = await Promise.allSettled(
       records.map(async ({ userId, status, notes }) => {
+        const attData_bulk = { userId, programId, status, notes, recordedBy: req.user._id, timestamp: new Date() };
+        if (req.allianceOrganizationId) attData_bulk.allianceOrganizationId = req.allianceOrganizationId;
         const att = await Attendance.findOneAndUpdate(
           { userId, programId },
-          { userId, programId, status, notes, recordedBy: req.user._id, timestamp: new Date() },
+          attData_bulk,
           { upsert: true, new: true }
         );
         await updateEngagementScore(userId, status);
@@ -62,6 +66,11 @@ exports.getProgramAttendance = async (req, res, next) => {
     const { page, limit, skip } = paginate(req.query);
     const filter = { programId: req.params.programId };
     if (req.query.status) filter.status = req.query.status;
+    if (!req.isSuperAdmin) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     const [records, total] = await Promise.all([
       Attendance.find(filter).skip(skip).limit(limit)
@@ -76,7 +85,13 @@ exports.getProgramAttendance = async (req, res, next) => {
 exports.getUserAttendance = async (req, res, next) => {
   try {
     const userId = req.params.userId || req.user._id;
-    const records = await Attendance.find({ userId })
+    const findFilter = { userId };
+    if (!req.isSuperAdmin) {
+      findFilter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      findFilter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
+    const records = await Attendance.find(findFilter)
       .populate('programId', 'title date status')
       .sort('-timestamp');
     return success(res, records);
@@ -86,10 +101,16 @@ exports.getUserAttendance = async (req, res, next) => {
 exports.getAttendanceSummary = async (req, res, next) => {
   try {
     const { programId } = req.params;
+    const summaryFilter = { programId };
+    if (!req.isSuperAdmin) {
+      summaryFilter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      summaryFilter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
     const [present, absent, total] = await Promise.all([
-      Attendance.countDocuments({ programId, status: 'present' }),
-      Attendance.countDocuments({ programId, status: 'absent' }),
-      Attendance.countDocuments({ programId }),
+      Attendance.countDocuments({ ...summaryFilter, status: 'present' }),
+      Attendance.countDocuments({ ...summaryFilter, status: 'absent' }),
+      Attendance.countDocuments(summaryFilter),
     ]);
     return success(res, { total, present, absent, attendanceRate: total ? ((present / total) * 100).toFixed(1) : 0 });
   } catch (err) { next(err); }

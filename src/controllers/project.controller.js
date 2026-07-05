@@ -33,6 +33,11 @@ exports.getAllProjects = async (req, res, next) => {
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
     if (req.query.search) filter.title = { $regex: req.query.search, $options: 'i' };
+    if (!req.isSuperAdmin) {
+      if (req.allianceOrganizationId) filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     const [projects, total] = await Promise.all([
       Project.find(filter).skip(skip).limit(limit).populate('createdBy', 'fullName role').sort({ createdAt: -1 }),
@@ -44,7 +49,11 @@ exports.getAllProjects = async (req, res, next) => {
 
 exports.getProjectById = async (req, res, next) => {
   try {
-    const project = await Project.findById(req.params.id).populate('createdBy', 'fullName role');
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const project = await Project.findOne(query).populate('createdBy', 'fullName role');
     if (!project) return error(res, 'Project not found', 404);
     return success(res, project);
   } catch (err) { next(err); }
@@ -53,6 +62,7 @@ exports.getProjectById = async (req, res, next) => {
 exports.createProject = async (req, res, next) => {
   try {
     const data = { ...req.body, createdBy: req.user._id };
+    data.allianceOrganizationId = req.allianceOrganizationId;
     
     if (req.files && req.files.images) {
       const files = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
@@ -74,7 +84,11 @@ exports.createProject = async (req, res, next) => {
 
 exports.updateProject = async (req, res, next) => {
   try {
-    const project = await Project.findById(req.params.id);
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const project = await Project.findOne(query);
     if (!project) return error(res, 'Project not found', 404);
 
     const data = { ...req.body };
@@ -99,7 +113,11 @@ exports.updateProject = async (req, res, next) => {
 
 exports.deleteProject = async (req, res, next) => {
   try {
-    const project = await Project.findByIdAndDelete(req.params.id);
+    const query = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      query.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const project = await Project.findOneAndDelete(query);
     if (!project) return error(res, 'Project not found', 404);
     return success(res, null, 'Project deleted');
   } catch (err) { next(err); }

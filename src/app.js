@@ -56,6 +56,7 @@ const requestLogger = (req, res, next) => {
 
 // Route imports
 const authRoutes = require('./routes/auth.routes');
+const organizationRoutes = require('./routes/organization.routes');
 const userRoutes = require('./routes/user.routes');
 const programRoutes = require('./routes/program.routes');
 const attendanceRoutes = require('./routes/attendance.routes');
@@ -83,6 +84,7 @@ const contactRoutes = require('./routes/contact.routes');
 const teamRoutes = require('./routes/team.routes');
 const templateConfigRoutes = require('./routes/templateConfig.routes');
 const documentApprovalRoutes = require('./routes/documentApproval.routes');
+const socialChannelRoutes = require('./routes/socialChannel.routes');
 
 // Ensure models are registered
 require('./models/MonthlyContribution');
@@ -92,6 +94,7 @@ require('./models/PointTransaction');
 require('./models/Activity');
 require('./models/ActivityParticipant');
 require('./models/ActivityMedia');
+require('./models/ActivityReport');
 require('./models/ContributionLedger');
 require('./models/ContributionMonth');
 require('./models/TargetAllocation');
@@ -100,6 +103,7 @@ require('./models/Event');
 require('./models/Project');
 require('./models/TeamMember');
 require('./models/ContactMessage');
+require('./models/SocialChannel');
 
 const app = express();
 
@@ -193,6 +197,7 @@ app.get('/health', (req, res) => res.json({ status: 'ok', system: 'VOA System', 
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/organizations', organizationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/programs', programRoutes);
 app.use('/api/attendance', attendanceRoutes);
@@ -220,6 +225,7 @@ app.use('/api/team', teamRoutes);
 app.use('/api/system-info', systemInfoRoutes);
 app.use('/api/template-config', templateConfigRoutes);
 app.use('/api/document-approvals', documentApprovalRoutes);
+app.use('/api/social-channels', socialChannelRoutes);
 
 // 404 handler
 app.use((req, res) => {

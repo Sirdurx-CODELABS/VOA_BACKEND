@@ -1,6 +1,7 @@
 const Activity = require('../models/Activity');
 const ActivityParticipant = require('../models/ActivityParticipant');
 const ActivityMedia = require('../models/ActivityMedia');
+const ActivityReport = require('../models/ActivityReport');
 const User = require('../models/User');
 const { success, error, paginated } = require('../utils/apiResponse');
 const { paginate, paginationMeta } = require('../utils/pagination');
@@ -46,6 +47,11 @@ exports.getActivities = async (req, res, next) => {
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
     if (req.query.type) filter.type = req.query.type;
+    if (!req.isSuperAdmin) {
+      filter.allianceOrganizationId = req.allianceOrganizationId;
+    } else if (req.query.allianceOrganizationId) {
+      filter.allianceOrganizationId = req.query.allianceOrganizationId;
+    }
 
     // Members only see activities they are invited to
     if (req.user.role === 'member' && !req.user.isVice) {
@@ -66,14 +72,19 @@ exports.getActivities = async (req, res, next) => {
 // ── GET /activities/:id ───────────────────────────────────────────────────────
 exports.getActivity = async (req, res, next) => {
   try {
-    const activity = await Activity.findById(req.params.id).populate('createdBy', 'fullName role');
+    const activityGetFilter = { _id: req.params.id };
+    if (!req.isSuperAdmin && req.allianceOrganizationId) {
+      activityGetFilter.allianceOrganizationId = req.allianceOrganizationId;
+    }
+    const activity = await Activity.findOne(activityGetFilter).populate('createdBy', 'fullName role');
     if (!activity) return error(res, 'Activity not found', 404);
-    const [participants, media] = await Promise.all([
+    const [participants, media, reports] = await Promise.all([
       ActivityParticipant.find({ activityId: activity._id, inviteStatus: 'invited' })
         .populate('userId', 'fullName email gender membershipType profileImage dob'),
       ActivityMedia.find({ activityId: activity._id }).populate('uploadedBy', 'fullName'),
+      ActivityReport.find({ activityId: activity._id }).populate('createdBy', 'fullName').sort('-createdAt'),
     ]);
-    return success(res, { activity, participants, media });
+    return success(res, { activity, participants, media, reports });
   } catch (err) { next(err); }
 };
 
@@ -134,7 +145,7 @@ exports.updateActivity = async (req, res, next) => {
     if (!canCreate(req.user)) return error(res, 'Not authorized', 403);
     const allowed = ['title', 'type', 'description', 'date', 'startTime', 'endTime', 'venue',
       'peopleNeeded', 'targetMembershipType', 'targetGender', 'targetAgeMin', 'targetAgeMax',
-      'customConditions', 'status'];
+      'customConditions', 'notes', 'status'];
     const updates = {};
     allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
     const activity = await Activity.findByIdAndUpdate(req.params.id, updates, { new: true });
@@ -311,6 +322,37 @@ exports.getPublicMedia = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// ── GET /activities/gallery/public — public gallery (showOnWebsite=true) ─────
+exports.getPublicGallery = async (req, res, next) => {
+  try {
+    const { page, limit, skip } = paginate(req.query);
+    const filter = { showOnWebsite: true };
+
+    const [media, total] = await Promise.all([
+      ActivityMedia.find(filter).skip(skip).limit(limit)
+        .populate('activityId', 'title type date venue')
+        .populate('uploadedBy', 'fullName')
+        .sort('-createdAt'),
+      ActivityMedia.countDocuments(filter),
+    ]);
+    return paginated(res, media, paginationMeta(total, page, limit));
+  } catch (err) { next(err); }
+};
+
+// ── PATCH /activities/media/:mediaId/visibility — toggle showOnWebsite ────────
+exports.toggleMediaVisibility = async (req, res, next) => {
+  try {
+    const media = await ActivityMedia.findById(req.params.mediaId);
+    if (!media) return error(res, 'Media not found', 404);
+    if (media.uploadedBy.toString() !== req.user._id.toString() && !canCreate(req.user)) {
+      return error(res, 'Not authorized', 403);
+    }
+    media.showOnWebsite = req.body.showOnWebsite;
+    await media.save();
+    return success(res, media, 'Visibility updated');
+  } catch (err) { next(err); }
+};
+
 // ── DELETE /activities/media/:mediaId ─────────────────────────────────────────
 exports.deleteMedia = async (req, res, next) => {
   try {
@@ -322,5 +364,73 @@ exports.deleteMedia = async (req, res, next) => {
     }
     await ActivityMedia.findByIdAndDelete(req.params.mediaId);
     return success(res, null, 'Image deleted');
+  } catch (err) { next(err); }
+};
+
+// ── POST /activities/:id/reports — create report ─────────────────────────────
+exports.createReport = async (req, res, next) => {
+  try {
+    const activity = await Activity.findById(req.params.id);
+    if (!activity) return error(res, 'Activity not found', 404);
+
+    let attachments = [];
+    if (req.files?.length) {
+      const { uploadMany } = require('../services/upload.service');
+      attachments = await uploadMany(req.files, 'voa/reports');
+    }
+
+    const report = await ActivityReport.create({
+      activityId: activity._id,
+      title: req.body.title,
+      content: req.body.content || '',
+      reportType: req.body.reportType,
+      createdBy: req.user._id,
+      attachments,
+    });
+    return success(res, report, 'Report created', 201);
+  } catch (err) { next(err); }
+};
+
+// ── GET /activities/:id/reports — list reports for an activity ───────────────
+exports.getReports = async (req, res, next) => {
+  try {
+    const { page, limit, skip } = require('../utils/pagination').paginate(req.query);
+    const filter = { activityId: req.params.id };
+    if (req.query.reportType) filter.reportType = req.query.reportType;
+
+    const [reports, total] = await Promise.all([
+      ActivityReport.find(filter).skip(skip).limit(limit)
+        .populate('createdBy', 'fullName')
+        .sort('-createdAt'),
+      ActivityReport.countDocuments(filter),
+    ]);
+    return require('../utils/apiResponse').paginated(res, reports, require('../utils/pagination').paginationMeta(total, page, limit));
+  } catch (err) { next(err); }
+};
+
+// ── PUT /activities/:id/reports/:reportId — update report ────────────────────
+exports.updateReport = async (req, res, next) => {
+  try {
+    const report = await ActivityReport.findById(req.params.reportId);
+    if (!report) return error(res, 'Report not found', 404);
+    if (report.createdBy.toString() !== req.user._id.toString() && !canCreate(req.user)) {
+      return error(res, 'Not authorized', 403);
+    }
+    Object.assign(report, req.body);
+    await report.save();
+    return success(res, report, 'Report updated');
+  } catch (err) { next(err); }
+};
+
+// ── DELETE /activities/:id/reports/:reportId — delete report ─────────────────
+exports.deleteReport = async (req, res, next) => {
+  try {
+    const report = await ActivityReport.findById(req.params.reportId);
+    if (!report) return error(res, 'Report not found', 404);
+    if (report.createdBy.toString() !== req.user._id.toString() && !canCreate(req.user)) {
+      return error(res, 'Not authorized', 403);
+    }
+    await ActivityReport.findByIdAndDelete(req.params.reportId);
+    return success(res, null, 'Report deleted');
   } catch (err) { next(err); }
 };

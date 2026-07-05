@@ -7,6 +7,7 @@ const treasuryAccountSchema = new mongoose.Schema({
   accountHolderName: { type: String, required: true, trim: true },
   isActive: { type: Boolean, default: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('TreasuryAccount', treasuryAccountSchema);

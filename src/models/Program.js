@@ -25,6 +25,7 @@ const programSchema = new mongoose.Schema(
     venue: { type: String, trim: true },
     tags: [{ type: String }],
     isPublic: { type: Boolean, default: true },
+    allianceOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'AllianceOrganization', default: null },
   },
   { timestamps: true }
 );
