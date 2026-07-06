@@ -6,6 +6,10 @@ const Report = require('../models/Report');
 const Announcement = require('../models/Announcement');
 const WelfareRequest = require('../models/WelfareRequest');
 const AuditLog = require('../models/AuditLog');
+const AllianceOrganization = require('../models/AllianceOrganization');
+const DocumentTemplate = require('../models/DocumentTemplate');
+const Activity = require('../models/Activity');
+const Project = require('../models/Project');
 const { success, error, paginated } = require('../utils/apiResponse');
 const { paginate, paginationMeta } = require('../utils/pagination');
 const { log } = require('../services/audit.service');
@@ -283,5 +287,71 @@ exports.getSystemStats = async (req, res, next) => {
       AuditLog.countDocuments(orgFilter),
     ]);
     return success(res, { users, programs, transactions, pendingWelfare: welfare, totalAuditLogs: logs });
+  } catch (err) { next(err); }
+};
+
+/**
+ * GET /api/superadmin/organizations/:id/stats
+ * Super Admin — get comprehensive stats for a specific organization
+ */
+exports.getOrganizationStats = async (req, res, next) => {
+  try {
+    const orgId = req.params.id;
+    const orgFilter = { allianceOrganizationId: orgId };
+
+    const [
+      usersByStatus,
+      programs,
+      transactions,
+      reports,
+      documents,
+      activities,
+      projects,
+      recentActivity,
+      lastLoginUsers,
+      orgInfo,
+    ] = await Promise.all([
+      User.aggregate([{ $match: orgFilter }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Program.countDocuments(orgFilter),
+      Transaction.aggregate([{ $match: orgFilter }, { $group: { _id: '$type', total: { $sum: '$amount' } } }]),
+      Report.countDocuments(orgFilter),
+      DocumentTemplate.countDocuments(orgFilter),
+      Activity.countDocuments(orgFilter),
+      Project.countDocuments(orgFilter),
+      AuditLog.find(orgFilter).sort('-createdAt').limit(10).lean(),
+      User.find(orgFilter).sort('-lastActivity').limit(5).select('fullName email lastActivity status role').lean(),
+      AllianceOrganization.findById(orgId).lean(),
+    ]);
+
+    const activeUsers = usersByStatus.find(u => u._id === 'active')?.count || 0;
+    const inactiveUsers = usersByStatus.find(u => u._id === 'inactive')?.count || 0;
+    const pendingUsers = usersByStatus.find(u => u._id === 'pending')?.count || 0;
+    const totalUsers = activeUsers + inactiveUsers + pendingUsers;
+    const totalIncome = transactions.find(t => t._id === 'income')?.total || 0;
+    const totalExpense = transactions.find(t => t._id === 'expense')?.total || 0;
+
+    return success(res, {
+      totalUsers,
+      activeUsers,
+      inactiveUsers,
+      pendingUsers,
+      programs,
+      reports,
+      documents,
+      activities,
+      projects,
+      totalIncome,
+      totalExpense,
+      recentActivity,
+      lastLoginUsers: lastLoginUsers.map(u => ({
+        _id: u._id,
+        fullName: u.fullName,
+        email: u.email,
+        lastActivity: u.lastActivity,
+        status: u.status,
+        role: u.role,
+      })),
+      organization: orgInfo,
+    });
   } catch (err) { next(err); }
 };

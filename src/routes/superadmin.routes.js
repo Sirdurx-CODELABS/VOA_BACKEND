@@ -39,4 +39,7 @@ router.delete('/announcements/:id', ctrl.deleteAnnouncement);
 // Reports
 router.delete('/reports/:id', ctrl.deleteReport);
 
+// Organization stats
+router.get('/organizations/:id/stats', ctrl.getOrganizationStats);
+
 module.exports = router;

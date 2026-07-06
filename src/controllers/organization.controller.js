@@ -3,6 +3,7 @@ const User = require('../models/User');
 const { success, error, paginated } = require('../utils/apiResponse');
 const { paginate, paginationMeta } = require('../utils/pagination');
 const { log } = require('../services/audit.service');
+const { uploadToCloudinary } = require('../services/upload.service');
 const logger = require('../utils/logger');
 
 /**
@@ -163,6 +164,54 @@ exports.updateMyOrganization = async (req, res, next) => {
 
     await log({ actor: req.user, action: 'UPDATE_MY_ORGANIZATION', entity: 'AllianceOrganization', entityId: org._id, details: update, ip: req.ip });
     return success(res, org, 'Organization updated');
+  } catch (err) { next(err); }
+};
+
+/**
+ * PUT /api/organizations/me/logo
+ * Chairman / Vice Chairman — upload organization logo
+ */
+exports.uploadMyOrganizationLogo = async (req, res, next) => {
+  try {
+    if (!req.allianceOrganizationId) return error(res, 'You are not affiliated with any organization', 400);
+    if (!req.file) return error(res, 'No image file provided', 400);
+
+    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowed.includes(req.file.mimetype)) {
+      return error(res, 'Invalid image format. Supported: JPEG, PNG, GIF, WebP', 400);
+    }
+
+    const logoUrl = await uploadToCloudinary(req.file.path, 'voa/organizations/logos');
+
+    const org = await AllianceOrganization.findByIdAndUpdate(
+      req.allianceOrganizationId,
+      { logo: req.file.path, logoUrl },
+      { new: true, runValidators: true }
+    );
+    if (!org) return error(res, 'Organization not found', 404);
+
+    await log({ actor: req.user, action: 'UPDATE_ORG_LOGO', entity: 'AllianceOrganization', entityId: org._id, ip: req.ip });
+    return success(res, { logoUrl, logo: org.logo }, 'Organization logo updated');
+  } catch (err) { next(err); }
+};
+
+/**
+ * PUT /api/organizations/me/logo/remove
+ * Chairman / Vice Chairman — remove organization logo
+ */
+exports.removeMyOrganizationLogo = async (req, res, next) => {
+  try {
+    if (!req.allianceOrganizationId) return error(res, 'You are not affiliated with any organization', 400);
+
+    const org = await AllianceOrganization.findByIdAndUpdate(
+      req.allianceOrganizationId,
+      { logo: '', logoUrl: '' },
+      { new: true }
+    );
+    if (!org) return error(res, 'Organization not found', 404);
+
+    await log({ actor: req.user, action: 'REMOVE_ORG_LOGO', entity: 'AllianceOrganization', entityId: org._id, ip: req.ip });
+    return success(res, null, 'Organization logo removed');
   } catch (err) { next(err); }
 };
 

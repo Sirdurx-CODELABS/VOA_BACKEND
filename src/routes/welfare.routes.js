@@ -7,7 +7,7 @@ const v = require('../validations/welfare.validation');
 
 router.use(protect);
 
-router.get('/',    requirePermission('manage_welfare'), ctrl.getAllRequests);
+router.get('/',    requireAnyPermission('manage_welfare', 'submit_welfare_request'), ctrl.getAllRequests);
 router.get('/:id', requireAnyPermission('manage_welfare', 'submit_welfare_request'), ctrl.getRequestById);
 
 // Member creates — only type+message allowed (status stripped by schema)
