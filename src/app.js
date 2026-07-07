@@ -205,6 +205,10 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', system: 'VOA System', timestamp: new Date() }));
+app.get('/debug/whatsapp', (req, res) => {
+  const svc = require('./whatsapp/whatsapp.service');
+  res.json({ enabled: svc.enabled, phoneNumberIdSet: !!svc.phoneNumberId, accessTokenSet: !!svc.accessToken, apiVersion: process.env.WHATSAPP_API_VERSION || 'not set' });
+});
 
 // Privacy policy page (for Meta App Review)
 app.get('/privacy', (req, res) => {
