@@ -306,6 +306,19 @@ exports.getMe = async (req, res) => {
   });
 };
 
+// ─── LOGOUT ────────────────────────────────────────────────────────────────────
+exports.logout = async (req, res) => {
+  // Stateless JWT — no server-side invalidation needed.
+  // The client discards the token. We just acknowledge the logout.
+  try {
+    if (req.user) {
+      req.user.lastActiveAt = new Date();
+      await req.user.save({ validateBeforeSave: false });
+    }
+  } catch {}
+  return success(res, null, 'Logged out successfully');
+};
+
 // ─── CHANGE PASSWORD ──────────────────────────────────────────────────────────
 exports.changePassword = async (req, res, next) => {
   try {

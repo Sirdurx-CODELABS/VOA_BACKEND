@@ -56,6 +56,7 @@ const requestLogger = (req, res, next) => {
 
 // Route imports
 const authRoutes = require('./routes/auth.routes');
+const aiRoutes = require('./ai/routes/ai.routes');
 const organizationRoutes = require('./routes/organization.routes');
 const userRoutes = require('./routes/user.routes');
 const programRoutes = require('./routes/program.routes');
@@ -104,6 +105,15 @@ require('./models/Project');
 require('./models/TeamMember');
 require('./models/ContactMessage');
 require('./models/SocialChannel');
+
+// AI Platform models
+require('./ai/models/AIPatient');
+require('./ai/models/AIChat');
+require('./ai/models/AIConsultation');
+require('./ai/models/AIDoctor');
+require('./ai/models/AIHospital');
+require('./ai/models/AIConsentLog');
+require('./ai/models/AIProviderLog');
 
 const app = express();
 
@@ -226,6 +236,13 @@ app.use('/api/system-info', systemInfoRoutes);
 app.use('/api/template-config', templateConfigRoutes);
 app.use('/api/document-approvals', documentApprovalRoutes);
 app.use('/api/social-channels', socialChannelRoutes);
+
+// AI Platform routes
+app.use('/api/ai', aiRoutes);
+
+// WhatsApp webhook routes
+const whatsappRoutes = require('./whatsapp/whatsapp.router');
+app.use('/whatsapp', whatsappRoutes);
 
 // 404 handler
 app.use((req, res) => {

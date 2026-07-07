@@ -3,6 +3,7 @@ require('dotenv').config();
 const app = require('./src/app');
 const connectDB = require('./src/config/db');
 const logger = require('./src/utils/logger');
+const { getAIService } = require('./src/ai/services');
 const mongoose = require('mongoose');
 const fs = require('fs');
 
@@ -38,11 +39,28 @@ const printBanner = () => {
   console.log(`  ${C.green}${C.bright}✔ JWT${C.reset}           ${C.white}Expires in ${process.env.JWT_EXPIRES_IN}${C.reset}`);
   console.log(`  ${C.green}${C.bright}✔ Rate Limit${C.reset}    ${C.white}100 req / 15min (auth: 10 req / 15min)${C.reset}`);
   console.log(`  ${C.green}${C.bright}✔ File Upload${C.reset}   ${C.white}Max 10MB — uploads/ directory${C.reset}`);
+
+  // AI Provider Status
+  try {
+    const ai = getAIService();
+    const providerStatus = ai.getProviderStatus();
+    const configured = Object.entries(providerStatus)
+      .filter(([, v]) => v.available)
+      .map(([k]) => k);
+    const aiLine = configured.length
+      ? `${C.green}${C.bright}✔ AI${C.reset}           ${C.white}${configured.join(', ')}${C.reset}`
+      : `${C.yellow}○ AI${C.reset}           ${C.dim}No API keys configured${C.reset}`;
+    console.log(`  ${aiLine}`);
+  } catch {
+    console.log(`  ${C.yellow}○ AI${C.reset}           ${C.dim}Not initialized${C.reset}`);
+  }
+
   console.log(line);
   console.log(`${C.gray}  API Base: http://localhost:${PORT}/api${C.reset}`);
   console.log(`${C.gray}  Health:   http://localhost:${PORT}/health${C.reset}`);
   console.log(`${C.gray}  Routes:   /auth /users /programs /attendance /transactions${C.reset}`);
   console.log(`${C.gray}            /reports /announcements /welfare /analytics /notifications${C.reset}`);
+  console.log(`${C.gray}            /ai ${C.dim}(chat, summary, risk, translate, providers, health)${C.reset}`);
   console.log(line + '\n');
 };
 
