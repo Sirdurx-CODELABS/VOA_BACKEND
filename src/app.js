@@ -206,6 +206,57 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', system: 'VOA System', timestamp: new Date() }));
 
+// Privacy policy page (for Meta App Review)
+app.get('/privacy', (req, res) => {
+  res.send(`<!DOCTYPE html><html><head><title>Privacy Policy - VOA Health</title><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;max-width:800px;margin:40px auto;padding:20px;line-height:1.6;color:#333}h1{color:#2563eb}hr{border:0;border-top:1px solid #e5e7eb}</style></head><body>
+<h1>Privacy Policy</h1>
+<p><strong>Voice of Adolescents (VOA)</strong> — <em>Last updated: July 2026</em></p>
+<hr>
+<h2>1. Information We Collect</h2>
+<p>We collect personal information you provide: name, phone number, age, gender, location (state/LGA), ART number (optional), and health-related queries for the purpose of providing health education and connecting you with healthcare professionals.</p>
+<h2>2. How We Use Information</h2>
+<p>Your information is used solely to: respond to health inquiries, facilitate doctor consultations, provide medication reminders, and improve our health education content. We do not sell or share your data for marketing.</p>
+<h2>3. Data Sharing</h2>
+<p>Health summaries are shared with healthcare professionals only after obtaining your explicit consent. HIV status information is shared only when you authorize it.</p>
+<h2>4. Data Storage</h2>
+<p>Your data is stored securely on encrypted servers. We retain conversation history to provide continuity of care. You may request deletion at any time.</p>
+<h2>5. Your Rights</h2>
+<p>You have the right to: access your data, request corrections, withdraw consent, and request deletion of your information.</p>
+<h2>6. Contact</h2>
+<p>For privacy concerns, contact: khalyx2026@outlook.com</p>
+<hr>
+<p><em>By using VOA services, you agree to this privacy policy.</em></p>
+</body></html>`);
+});
+
+// User data deletion page (for Meta App Review)
+app.get('/data-deletion', (req, res) => {
+  res.send(`<!DOCTYPE html><html><head><title>Data Deletion - VOA Health</title><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;max-width:800px;margin:40px auto;padding:20px;line-height:1.6;color:#333}h1{color:#dc2626}code{background:#f3f4f6;padding:2px 6px;border-radius:4px}</style></head><body>
+<h1>User Data Deletion</h1>
+<p><strong>Voice of Adolescents (VOA)</strong></p>
+<hr>
+<h2>How to Request Data Deletion</h2>
+<p>You can request deletion of your personal data by:</p>
+<h3>Option 1: In-App</h3>
+<p>Send "Delete my data" via WhatsApp to our service number, and your data will be removed within 48 hours.</p>
+<h3>Option 2: Email Request</h3>
+<p>Send an email to <strong>khalyx2026@outlook.com</strong> with the subject "Data Deletion Request" including your registered phone number. We will process your request within 7 business days.</p>
+<h3>Option 3: API Deletion</h3>
+<p>Admins can call: <code>DELETE https://voa-backend-h4gq.onrender.com/api/ai/patient/{patientId}</code></p>
+<h2>What Gets Deleted</h2>
+<ul>
+<li>Patient profile (name, phone, age, gender, location)</li>
+<li>Chat history and consultation records</li>
+<li>Consent logs</li>
+<li>ART numbers and medical data</li>
+</ul>
+<h2>Confirmation</h2>
+<p>Once your data is deleted, you will receive a confirmation via email or WhatsApp within 7 business days.</p>
+<hr>
+<p><em>For questions: khalyx2026@outlook.com</em></p>
+</body></html>`);
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/organizations', organizationRoutes);
