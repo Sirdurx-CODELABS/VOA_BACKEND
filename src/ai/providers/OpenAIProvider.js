@@ -80,6 +80,16 @@ class OpenAIProvider extends BaseProvider {
     });
   }
 
+  async generateEmbedding(text, options = {}) {
+    const client = await this.getClient();
+    const result = await client.embeddings.create({
+      model: options.model || 'text-embedding-3-small',
+      input: text,
+    });
+    const embedding = result.data?.[0]?.embedding || [];
+    return { embedding, provider: this.name, model: 'text-embedding-3-small' };
+  }
+
   async healthAdvice(query, context = {}) {
     const contextStr = context.patientSummary ? `Patient context: ${context.patientSummary}` : '';
     const messages = [

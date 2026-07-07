@@ -14,9 +14,16 @@ const DoctorHandoffService = require('./DoctorHandoffService');
 const SummaryService = require('./SummaryService');
 const TranslationService = require('./TranslationService');
 const HospitalFinderService = require('./HospitalFinderService');
+const PromptLoader = require('./PromptLoader');
+const contextEngine = require('./ContextEngine');
+const EmbeddingService = require('./EmbeddingService');
+const KnowledgeService = require('./KnowledgeService');
+const RAGRetriever = require('./RAGRetriever');
+const vectorStore = require('./VectorStore');
 const AIPatient = require('../models/AIPatient');
 const AIChat = require('../models/AIChat');
 const AIConsultation = require('../models/AIConsultation');
+const AIKnowledge = require('../models/AIKnowledge');
 const logger = require('../../utils/logger');
 
 class AIService {
@@ -25,8 +32,22 @@ class AIService {
     this.router = new AIProviderRouter(this.providers);
     this.escalationEngine = new EscalationEngine(this.router);
     this.translationService = new TranslationService(this.router);
-    this.initialized = true;
+    this.embeddingService = new EmbeddingService(this.providers);
+    this.knowledgeService = new KnowledgeService(this.embeddingService);
+    this.ragRetriever = new RAGRetriever(this.embeddingService);
 
+    process.nextTick(async () => {
+      try {
+        await contextEngine.init();
+        await this.knowledgeService.init();
+        const indexed = await this.knowledgeService.indexAll();
+        logger.info(`AIService: prompt engine + RAG initialized (${indexed.chunks || 0} knowledge chunks indexed)`);
+      } catch (err) {
+        logger.warn(`AIService: prompt engine / RAG init deferred: ${err.message}`);
+      }
+    });
+
+    this.initialized = true;
     logger.info(`AIService initialized with providers: ${Object.keys(this.providers).filter(k => this.providers[k].isAvailable()).join(', ') || 'none'}`);
   }
 
@@ -84,6 +105,41 @@ class AIService {
     const level = conversationCache.getContext(patient._id)?.level
       || this.router.classifyLevel(message, patientContext, chat.messages);
 
+    // Build context from prompt engine + RAG
+    let ragChunks = [];
+    let contextResult = null;
+    const isRAGPossible = this.knowledgeService.initialized && this.embeddingService;
+
+    if (isRAGPossible && level >= 2) {
+      try {
+        const topics = contextEngine.initialized
+          ? require('./PromptRouter').getKnowledgeForTopic(
+              require('./PromptRouter').classifyTopic(intent, message, patientContext)
+            )
+          : ['common-faq'];
+        ragChunks = await this.ragRetriever.retrieve(message, {
+          topics,
+          topK: 3,
+          minScore: 0.25,
+        });
+      } catch { /* RAG is best-effort */ }
+    }
+
+    if (contextEngine.initialized) {
+      try {
+        contextResult = await contextEngine.buildContext({
+          intent,
+          message,
+          channel,
+          patientContext,
+          conversationHistory: chat.messages,
+          ragChunks,
+        });
+      } catch { /* context engine is best-effort */ }
+    }
+
+    const systemPrompt = contextResult?.context || undefined;
+
     // Route to AI provider
     const aiResponse = await this.router.route(
       [
@@ -98,6 +154,7 @@ class AIService {
         patientContext,
         stream,
         history: chat.messages,
+        systemPrompt,
       }
     );
 

@@ -22,6 +22,10 @@ class BaseProvider {
     throw new Error(`Provider ${this.name} must implement summarize()`);
   }
 
+  async generateEmbedding(text, options = {}) {
+    throw new Error(`Provider ${this.name} must implement generateEmbedding()`);
+  }
+
   async translate(text, targetLang, options = {}) {
     throw new Error(`Provider ${this.name} must implement translate()`);
   }

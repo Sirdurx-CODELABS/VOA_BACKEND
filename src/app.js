@@ -114,6 +114,7 @@ require('./ai/models/AIDoctor');
 require('./ai/models/AIHospital');
 require('./ai/models/AIConsentLog');
 require('./ai/models/AIProviderLog');
+require('./ai/models/AIKnowledge');
 
 const app = express();
 

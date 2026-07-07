@@ -546,3 +546,139 @@ exports.clearCache = async (req, res, next) => {
   conversationCache.clear();
   return success(res, null, 'Cache cleared');
 };
+
+// ─── Prompt Management ──────────────────────────────────────────────
+exports.listPrompts = async (req, res, next) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const promptsDir = path.join(__dirname, '..', 'prompts');
+    if (!fs.existsSync(promptsDir)) return success(res, []);
+    const files = fs.readdirSync(promptsDir).filter(f => f.endsWith('.md'));
+    const prompts = files.map(f => {
+      const content = fs.readFileSync(path.join(promptsDir, f), 'utf-8');
+      const name = f.replace(/\.prompt\.md$/, '').replace(/\.md$/, '');
+      return { name, filename: f, wordCount: content.split(/\s+/).length, preview: content.substring(0, 200) };
+    });
+    return success(res, prompts);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getPrompt = async (req, res, next) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const promptsDir = path.join(__dirname, '..', 'prompts');
+    const candidates = [
+      path.join(promptsDir, `${req.params.name}.prompt.md`),
+      path.join(promptsDir, `${req.params.name}.md`),
+    ];
+    for (const fp of candidates) {
+      if (fs.existsSync(fp)) {
+        const content = fs.readFileSync(fp, 'utf-8');
+        return success(res, { name: req.params.name, content, filePath: fp });
+      }
+    }
+    return error(res, 'Prompt not found', 404);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.savePrompt = async (req, res, next) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const { name, content } = req.body;
+    if (!name || content === undefined) return error(res, 'name and content required', 400);
+    const promptsDir = path.join(__dirname, '..', 'prompts');
+    if (!fs.existsSync(promptsDir)) fs.mkdirSync(promptsDir, { recursive: true });
+    const filePath = path.join(promptsDir, `${name}.prompt.md`);
+    fs.writeFileSync(filePath, content, 'utf-8');
+    logger.info(`Prompt saved: ${name}.prompt.md`);
+    return success(res, { name, filePath }, 'Prompt saved');
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.deletePrompt = async (req, res, next) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const promptsDir = path.join(__dirname, '..', 'prompts');
+    const candidates = [
+      path.join(promptsDir, `${req.params.name}.prompt.md`),
+      path.join(promptsDir, `${req.params.name}.md`),
+    ];
+    for (const fp of candidates) {
+      if (fs.existsSync(fp)) {
+        fs.unlinkSync(fp);
+        return success(res, null, 'Prompt deleted');
+      }
+    }
+    return error(res, 'Prompt not found', 404);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── Knowledge Management ───────────────────────────────────────────
+exports.listKnowledge = async (req, res, next) => {
+  try {
+    const AIKnowledge = require('../models/AIKnowledge');
+    const stats = await AIKnowledge.aggregate([
+      { $match: { isActive: true } },
+      { $group: { _id: '$filename', chunks: { $sum: 1 }, totalWords: { $sum: { $ifNull: ['$metadata.wordCount', 0] } }, topic: { $first: '$topic' } } },
+      { $sort: { _id: 1 } },
+    ]);
+    return success(res, stats);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.reindexKnowledge = async (req, res, next) => {
+  try {
+    const ai = getAIService();
+    const result = await ai.knowledgeService.indexAll();
+    return success(res, result, 'Knowledge base re-indexed');
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.reindexKnowledgeFile = async (req, res, next) => {
+  try {
+    const ai = getAIService();
+    const result = await ai.knowledgeService.reindexFile(req.params.filename);
+    return success(res, { chunks: result }, `Re-indexed ${req.params.filename}`);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.deleteKnowledge = async (req, res, next) => {
+  try {
+    const ai = getAIService();
+    await ai.knowledgeService.removeKnowledge(req.params.filename);
+    return success(res, null, `Knowledge '${req.params.filename}' deleted`);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getRAGStats = async (req, res, next) => {
+  try {
+    const totalChunks = await vectorStore.count();
+    const topics = await vectorStore.getTopics();
+    const knowledgeFiles = require('fs').readdirSync(
+      require('path').join(__dirname, '..', 'knowledge')
+    ).filter(f => f.endsWith('.md') || f.endsWith('.txt'));
+    return success(res, { totalChunks, topics, knowledgeFiles });
+  } catch (err) {
+    next(err);
+  }
+};

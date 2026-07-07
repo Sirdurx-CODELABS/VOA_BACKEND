@@ -61,6 +61,15 @@ class GeminiProvider extends BaseProvider {
     return this.generateResponse(messages, { ...options, temperature: 0.1, maxTokens: 600 });
   }
 
+  async generateEmbedding(text, options = {}) {
+    const { GoogleGenerativeAI } = require('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(this.apiKey);
+    const model = genAI.getGenerativeModel({ model: 'embedding-001' });
+    const result = await model.embedContent(text);
+    const embedding = result.embedding?.values || [];
+    return { embedding, provider: this.name, model: 'embedding-001' };
+  }
+
   async healthAdvice(query, context = {}) {
     const messages = [{ role: 'user', content: query }];
     return this.generateResponse(messages, {

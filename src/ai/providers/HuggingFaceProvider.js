@@ -70,6 +70,16 @@ class HuggingFaceProvider extends BaseProvider {
     return this.generateResponse(messages, { ...options, temperature: 0.1, maxTokens: 600 });
   }
 
+  async generateEmbedding(text, options = {}) {
+    const client = await this.getClient();
+    const result = await client.featureExtraction({
+      model: options.model || 'sentence-transformers/all-MiniLM-L6-v2',
+      inputs: text,
+    });
+    const embedding = Array.isArray(result) ? result : [];
+    return { embedding, provider: this.name, model: 'sentence-transformers/all-MiniLM-L6-v2' };
+  }
+
   async healthAdvice(query, context = {}) {
     const messages = [{ role: 'user', content: query }];
     return this.generateResponse(messages, { temperature: 0.3, maxTokens: 800 });

@@ -61,4 +61,17 @@ router.get('/provider-stats', protect, ctrl.getProviderStats);
 router.get('/cache', protect, ctrl.getCacheStats);
 router.delete('/cache', protect, ctrl.clearCache);
 
+// ─── Prompt Management ──────────────────────────────────────────────
+router.get('/prompts', protect, ctrl.listPrompts);
+router.get('/prompts/:name', protect, ctrl.getPrompt);
+router.put('/prompts/:name', protect, ctrl.savePrompt);
+router.delete('/prompts/:name', protect, ctrl.deletePrompt);
+
+// ─── Knowledge Management ───────────────────────────────────────────
+router.get('/knowledge', protect, ctrl.listKnowledge);
+router.post('/knowledge/reindex', protect, ctrl.reindexKnowledge);
+router.post('/knowledge/reindex/:filename', protect, ctrl.reindexKnowledgeFile);
+router.delete('/knowledge/:filename', protect, ctrl.deleteKnowledge);
+router.get('/rag-stats', protect, ctrl.getRAGStats);
+
 module.exports = router;

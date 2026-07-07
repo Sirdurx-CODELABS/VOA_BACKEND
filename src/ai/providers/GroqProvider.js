@@ -62,6 +62,10 @@ class GroqProvider extends BaseProvider {
     });
   }
 
+  async generateEmbedding(text, options = {}) {
+    throw new Error('Groq does not support embeddings API');
+  }
+
   async healthAdvice(query, context = {}) {
     const contextStr = context.patientSummary ? `Patient context: ${context.patientSummary}` : '';
     const messages = [
