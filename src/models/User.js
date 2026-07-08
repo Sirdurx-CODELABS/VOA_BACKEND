@@ -75,7 +75,7 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 };
 
 userSchema.methods.hasPermission = function (permission) {
-  if (this.role === 'super_admin') return true;
+  if (this.role === 'super_admin' || this.role === 'voa_admin') return true;
   const perms = getPermissions(this.role, this.isVice);
   if (perms.includes('*')) return true;
   return perms.includes(permission);

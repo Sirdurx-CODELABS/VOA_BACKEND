@@ -10,8 +10,10 @@ const register = Joi.object({
 });
 
 const login = Joi.object({
-  email: Joi.string().email().required(),
+  identifier: Joi.string().required().messages({ 'any.required': 'Email or phone number is required' }),
+  email: Joi.string().email().optional(),
   password: Joi.string().required(),
+  portal: Joi.string().valid('org', 'hms').optional(),
 });
 
 const forgotPassword = Joi.object({

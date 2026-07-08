@@ -64,10 +64,10 @@ class GeminiProvider extends BaseProvider {
   async generateEmbedding(text, options = {}) {
     const { GoogleGenerativeAI } = require('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(this.apiKey);
-    const model = genAI.getGenerativeModel({ model: 'embedding-001' });
+    const model = genAI.getGenerativeModel({ model: 'text-embedding-004' });
     const result = await model.embedContent(text);
     const embedding = result.embedding?.values || [];
-    return { embedding, provider: this.name, model: 'embedding-001' };
+    return { embedding, provider: this.name, model: 'text-embedding-004' };
   }
 
   async healthAdvice(query, context = {}) {

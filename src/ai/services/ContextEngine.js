@@ -1,4 +1,5 @@
-const promptLoader = require('./PromptLoader');
+const PromptLoader = require('./PromptLoader');
+const promptLoader = new PromptLoader();
 const promptRouter = require('./PromptRouter');
 const logger = require('../../utils/logger');
 
@@ -20,6 +21,7 @@ class ContextEngine {
       intent,
       message,
       channel = 'web',
+      role,
       patientContext = {},
       conversationHistory = [],
       ragChunks = [],
@@ -32,6 +34,11 @@ class ContextEngine {
     const channelPrompt = promptRouter.getChannelPrompt(channel);
     if (channelPrompt && !promptNames.includes(channelPrompt)) {
       promptNames.push(channelPrompt);
+    }
+
+    const rolePrompt = promptRouter.getRolePrompt(role);
+    if (rolePrompt && !promptNames.includes(rolePrompt)) {
+      promptNames.push(rolePrompt);
     }
 
     const mergedPrompts = await promptLoader.merge(promptNames);
@@ -53,6 +60,8 @@ class ContextEngine {
     return {
       context,
       topic,
+      role,
+      rolePrompt,
       promptsUsed: promptNames,
       knowledgeTopics: promptRouter.getKnowledgeForTopic(topic),
       chunkCount: ragChunks.length,

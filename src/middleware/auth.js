@@ -1,8 +1,9 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const AllianceOrganization = require('../models/AllianceOrganization');
+const StaffProfile = require('../ai/models/StaffProfile');
 const { error } = require('../utils/apiResponse');
-const { canAssignRole } = require('../config/permissions');
+const { canAssignRole, isClinicalRole } = require('../config/permissions');
 
 /**
  * Protect — verify JWT and attach user to req
@@ -18,7 +19,7 @@ const protect = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id).select('-password');
     if (!user) return error(res, 'User not found', 401);
-    if (user.status === 'inactive') return error(res, 'Account is inactive. Contact the Membership Coordinator.', 403);
+    if (user.status === 'inactive') return error(res, 'Account is inactive. Contact your administrator.', 403);
 
     req.user = user;
 
@@ -31,7 +32,10 @@ const protect = async (req, res, next) => {
       req.organization = null;
       req.allianceOrganizationId = null;
     }
+
     req.isSuperAdmin = user.role === 'super_admin';
+    req.isVoaAdmin = user.role === 'voa_admin';
+    req.isClinicalUser = isClinicalRole(user.role);
 
     // Non-blocking activity update
     user.updateActivity().catch(() => {});
@@ -43,7 +47,6 @@ const protect = async (req, res, next) => {
 
 /**
  * requirePermission — check a specific permission string
- * Usage: requirePermission('users:approve')
  */
 const requirePermission = (permission) => (req, res, next) => {
   if (!req.user) return error(res, 'Not authenticated', 401);
@@ -75,9 +78,35 @@ const requireRole = (...roles) => (req, res, next) => {
  */
 const canChangeRole = (req, res, next) => {
   const { role: targetRole } = req.body;
-  if (!targetRole) return next(); // no role change, skip
+  if (!targetRole) return next();
   if (!canAssignRole(req.user.role, targetRole)) {
     return error(res, `Your role cannot assign '${targetRole}'`, 403);
+  }
+  next();
+};
+
+/**
+ * requireClinicalRole — restrict to one or more clinical roles
+ */
+const requireClinicalRole = (...roles) => (req, res, next) => {
+  if (!req.user) return error(res, 'Not authenticated', 401);
+  if (!req.isClinicalUser) return error(res, 'Clinical role required', 403);
+  if (roles.length > 0 && !roles.includes(req.user.role)) {
+    return error(res, `Role '${req.user.role}' is not authorized for this action`, 403);
+  }
+  next();
+};
+
+/**
+ * loadStaffProfile — attach staff profile extension to req.staffProfile
+ */
+const loadStaffProfile = async (req, res, next) => {
+  if (!req.user || !req.isClinicalUser) return next();
+  try {
+    const profile = await StaffProfile.findOne({ user: req.user._id }).populate('hospital');
+    req.staffProfile = profile || null;
+  } catch {
+    req.staffProfile = null;
   }
   next();
 };
@@ -94,4 +123,20 @@ const isSuperAdmin = (req, res, next) => {
   next();
 };
 
-module.exports = { protect, requirePermission, requireAnyPermission, requireRole, authorize, canChangeRole, isSuperAdmin };
+/**
+ * isSuperOrVoaAdmin — gate for super_admin or voa_admin
+ */
+const isSuperOrVoaAdmin = (req, res, next) => {
+  if (!req.user) return error(res, 'Not authenticated', 401);
+  if (req.user.role !== 'super_admin' && req.user.role !== 'voa_admin') {
+    return error(res, 'System admin access required', 403);
+  }
+  next();
+};
+
+module.exports = {
+  protect, requirePermission, requireAnyPermission,
+  requireRole, authorize, canChangeRole,
+  isSuperAdmin, isSuperOrVoaAdmin,
+  isClinicalRole, requireClinicalRole, loadStaffProfile,
+};

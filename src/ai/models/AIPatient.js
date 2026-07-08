@@ -1,5 +1,27 @@
 const mongoose = require('mongoose');
 
+const vitalsSchema = new mongoose.Schema({
+  weight: { type: Number, default: null },
+  height: { type: Number, default: null },
+  temperature: { type: Number, default: null },
+  bloodPressureSystolic: { type: Number, default: null },
+  bloodPressureDiastolic: { type: Number, default: null },
+  pulse: { type: Number, default: null },
+  respiration: { type: Number, default: null },
+  oxygenSaturation: { type: Number, default: null },
+  notes: { type: String, default: '' },
+  recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  recordedAt: { type: Date, default: Date.now },
+}, { _id: false });
+
+const triageSchema = new mongoose.Schema({
+  category: { type: String, enum: ['emergency', 'urgent', 'semi_urgent', 'non_urgent', ''], default: '' },
+  status: { type: String, enum: ['pending', 'completed', ''], default: '' },
+  notes: { type: String, default: '' },
+  performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  performedAt: { type: Date, default: null },
+}, { _id: false });
+
 const patientSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   name: { type: String, required: true, trim: true },
@@ -24,10 +46,17 @@ const patientSchema = new mongoose.Schema({
   emergencyContact: { type: String, default: '' },
   source: { type: String, enum: ['whatsapp', 'web', 'mobile'], default: 'web' },
   metadata: { type: Map, of: String, default: {} },
+  // Clinical fields
+  chiefComplaint: { type: String, default: '' },
+  painLevel: { type: Number, default: 0, min: 0, max: 10 },
+  triage: { type: triageSchema, default: () => ({}) },
+  vitals: { type: vitalsSchema, default: () => ({}) },
+  vitalsHistory: [vitalsSchema],
 }, { timestamps: true });
 
 patientSchema.index({ phone: 1 });
 patientSchema.index({ userId: 1 });
 patientSchema.index({ state: 1, lga: 1 });
+patientSchema.index({ 'triage.status': 1 });
 
 module.exports = mongoose.model('AIPatient', patientSchema);

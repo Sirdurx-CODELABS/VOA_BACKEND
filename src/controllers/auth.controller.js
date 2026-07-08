@@ -1,9 +1,11 @@
 const crypto = require('crypto');
 const User = require('../models/User');
 const AllianceOrganization = require('../models/AllianceOrganization');
+const StaffProfile = require('../ai/models/StaffProfile');
 const { generateAccessToken, generateRandomToken } = require('../utils/generateToken');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/email.service');
 const { success, error } = require('../utils/apiResponse');
+const { isClinicalRole, isHmsRole, isOrgRole, HMS_ROLES, ORG_ROLES, getPortalForRole } = require('../config/permissions');
 const logger = require('../utils/logger');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -156,24 +158,31 @@ exports.resendVerification = async (req, res, next) => {
   }
 };
 
-// ─── LOGIN ────────────────────────────────────────────────────────────────────
+// ─── LOGIN (Unified — accepts email OR phone, auto-detects portal) ────────────
 exports.login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { identifier, email, password, portal } = req.body;
 
-    const user = await User.findOne({ email }).select('+password');
-    if (!user) return error(res, 'Invalid email or password', 401);
+    // Resolve identifier: prefer explicit `identifier` field, fallback to `email`
+    const loginId = identifier || email;
+    if (!loginId) return error(res, 'Email or phone number is required', 400);
+
+    // Auto-detect: if loginId contains "@", search by email; otherwise search by phone
+    const isEmail = loginId.includes('@');
+    const query = isEmail ? { email: loginId.toLowerCase().trim() } : { phone: loginId.trim() };
+
+    const user = await User.findOne(query).select('+password');
+    if (!user) return error(res, 'Invalid email/phone or password', 401);
 
     const passwordMatch = await user.comparePassword(password);
-    if (!passwordMatch) return error(res, 'Invalid email or password', 401);
+    if (!passwordMatch) return error(res, 'Invalid email/phone or password', 401);
 
-    // Account must be approved (active) — no email verification required
+    // Account status checks
     if (user.status === 'pending') {
       return error(res, 'Your account is pending approval. You will be notified once a Membership Coordinator or Chairman approves your account.', 403);
     }
-
     if (user.status === 'inactive') {
-      return error(res, 'Your account has been deactivated. Please contact the Membership Coordinator.', 403);
+      return error(res, 'Your account has been deactivated. Please contact your administrator.', 403);
     }
 
     // Block login if user's organization is not active
@@ -184,20 +193,43 @@ exports.login = async (req, res, next) => {
       }
     }
 
+    // Portal-based access control
+    const userPortal = getPortalForRole(user.role);
+    if (portal === 'hms' && userPortal !== 'hms' && userPortal !== null) {
+      return error(res, 'This account is not authorised to access the Hospital Management System.', 403);
+    }
+    if (portal === 'org' && userPortal !== 'org' && userPortal !== null) {
+      return error(res, 'This account is not authorised to access the Organisation Portal.', 403);
+    }
+
     const token = generateAccessToken(user._id);
     user.lastActiveAt = new Date();
     await user.save({ validateBeforeSave: false });
 
-    // Load organization data if user belongs to one
+    // Load organization data
     let organization = null;
     if (user.allianceOrganizationId) {
       organization = await AllianceOrganization.findById(user.allianceOrganizationId).lean();
     }
 
-    logger.info(`Login: ${user.email} [${user.role}] org=${organization?.organizationName || 'none'}`);
+    logger.info(`Login: ${user.email} [${user.role}] portal=${portal || userPortal || 'unknown'}`);
+
+    // Load staff profile for HMS roles
+    let staffProfile = null;
+    if (isHmsRole(user.role)) {
+      staffProfile = await StaffProfile.findOne({ user: user._id }).populate('hospital').lean().catch(() => null);
+    }
+
+    // Load VOA profile for org roles
+    let voaProfile = null;
+    if (isOrgRole(user.role)) {
+      const VOAProfile = require('../ai/models/VOAProfile');
+      voaProfile = await VOAProfile.findOne({ user: user._id }).lean().catch(() => null);
+    }
 
     return success(res, {
       token,
+      portal: userPortal,
       user: {
         id: user._id,
         fullName: user.fullName,
@@ -225,6 +257,8 @@ exports.login = async (req, res, next) => {
         allianceOrganizationId: user.allianceOrganizationId,
         createdAt: user.createdAt,
       },
+      staffProfile,
+      voaProfile,
       organization: organization ? {
         id: organization._id,
         organizationName: organization.organizationName,
@@ -300,9 +334,21 @@ exports.getMe = async (req, res) => {
       .select('organizationName shortName logo logoUrl primaryColor secondaryColor accentColor district state facilityType organizationType address contactEmail contactPhone website systemInfo')
       .lean();
   }
+  let staffProfile = null;
+  if (isHmsRole(req.user.role)) {
+    staffProfile = await StaffProfile.findOne({ user: req.user._id }).populate('hospital').lean().catch(() => null);
+  }
+  let voaProfile = null;
+  if (isOrgRole(req.user.role)) {
+    const VOAProfile = require('../ai/models/VOAProfile');
+    voaProfile = await VOAProfile.findOne({ user: req.user._id }).lean().catch(() => null);
+  }
   return success(res, {
     ...req.user.toObject(),
+    portal: getPortalForRole(req.user.role),
     organization,
+    staffProfile,
+    voaProfile,
   });
 };
 

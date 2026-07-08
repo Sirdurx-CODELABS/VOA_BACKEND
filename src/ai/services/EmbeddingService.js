@@ -19,7 +19,7 @@ class EmbeddingService {
           return result.embedding;
         }
       } catch (err) {
-        logger.warn(`EmbeddingService: ${name} failed: ${err.message}`);
+        logger.debug(`EmbeddingService: ${name} failed: ${err.message}`);
       }
     }
 

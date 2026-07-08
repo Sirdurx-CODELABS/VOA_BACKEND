@@ -121,6 +121,22 @@ class PromptRouter {
       default: return 'web';
     }
   }
+
+  /**
+   * Resolve role-specific prompt name from the User role string.
+   */
+  getRolePrompt(role) {
+    if (!role) return null;
+    const roleMap = {
+      doctor: 'doctor',
+      nurse: 'nurse',
+      pharmacist: 'pharmacist',
+      lab_scientist: 'lab_scientist',
+      adherence_counselor: 'adherence_counselor',
+      case_manager: 'case_manager',
+    };
+    return roleMap[role] || null;
+  }
 }
 
 module.exports = new PromptRouter();

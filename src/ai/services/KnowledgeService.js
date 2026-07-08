@@ -70,6 +70,7 @@ class KnowledgeService {
     await vectorStore.removeByFilename(fileInfo.filename);
 
     const docs = [];
+    let hadFailures = false;
     for (let i = 0; i < chunks.length; i++) {
       try {
         const embedding = await this.embeddingService.generateEmbedding(chunks[i]);
@@ -87,7 +88,7 @@ class KnowledgeService {
           },
         });
       } catch (err) {
-        logger.warn(`KnowledgeService: embedding failed for ${fileInfo.filename} chunk ${i}: ${err.message}`);
+        hadFailures = true;
         docs.push({
           filename: fileInfo.filename,
           originalName: fileInfo.filename,
@@ -100,6 +101,7 @@ class KnowledgeService {
         });
       }
     }
+    if (hadFailures) logger.warn(`KnowledgeService: some chunks for ${fileInfo.filename} stored without embeddings (fallback mode)`);
 
     if (docs.length > 0) {
       await vectorStore.store(docs);

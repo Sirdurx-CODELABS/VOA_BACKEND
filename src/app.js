@@ -86,6 +86,7 @@ const teamRoutes = require('./routes/team.routes');
 const templateConfigRoutes = require('./routes/templateConfig.routes');
 const documentApprovalRoutes = require('./routes/documentApproval.routes');
 const socialChannelRoutes = require('./routes/socialChannel.routes');
+const locationRoutes = require('./routes/location.routes');
 
 // Ensure models are registered
 require('./models/MonthlyContribution');
@@ -115,6 +116,31 @@ require('./ai/models/AIHospital');
 require('./ai/models/AIConsentLog');
 require('./ai/models/AIProviderLog');
 require('./ai/models/AIKnowledge');
+
+// EMR models
+require('./ai/models/EMRPrescription');
+require('./ai/models/EMRLabRequest');
+require('./ai/models/EMRReferral');
+require('./ai/models/EMRMedicalRecord');
+require('./ai/models/EMRMessage');
+require('./ai/models/EMRNotification');
+require('./ai/models/EMRAppointment');
+
+// HIV Clinical Care model
+require('./ai/models/AIHIVRecord');
+
+// Clinical Staff Profiles
+require('./ai/models/StaffProfile');
+require('./ai/models/Department');
+
+// Clinical Workflow models
+require('./ai/models/PatientTimeline');
+require('./ai/models/PharmacyDispense');
+require('./ai/models/LabResult');
+require('./ai/models/CounselingSession');
+require('./ai/models/CaseRecord');
+require('./ai/models/AIReminder');
+require('./ai/models/VOAProfile');
 
 const app = express();
 
@@ -295,6 +321,12 @@ app.use('/api/social-channels', socialChannelRoutes);
 
 // AI Platform routes
 app.use('/api/ai', aiRoutes);
+
+// Clinical workflow routes (multidisciplinary care)
+app.use('/api/clinical', require('./clinical/routes/clinical.routes'));
+
+// Location data routes
+app.use('/api/locations', locationRoutes);
 
 // WhatsApp webhook routes
 const whatsappRoutes = require('./whatsapp/whatsapp.router');

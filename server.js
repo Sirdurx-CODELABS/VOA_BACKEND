@@ -1,9 +1,12 @@
 require('./dns-fix');
 require('dotenv').config();
+const http = require('http');
 const app = require('./src/app');
 const connectDB = require('./src/config/db');
 const logger = require('./src/utils/logger');
 const { getAIService } = require('./src/ai/services');
+const ReminderScheduler = require('./src/ai/services/ReminderScheduler');
+const { initSocketIO } = require('./src/clinical/services/socket.service');
 const mongoose = require('mongoose');
 const fs = require('fs');
 
@@ -23,12 +26,12 @@ const C = {
   gray: '\x1b[90m', white: '\x1b[37m',
 };
 
-const printBanner = () => {
+const printBanner = (actualPort) => {
   const line = `${C.cyan}${'═'.repeat(60)}${C.reset}`;
   console.log('\n' + line);
   console.log(`${C.cyan}║${C.reset}${C.bright}${C.white}${'  VOA SYSTEM — Organization Management Platform'.padEnd(59)}${C.reset}${C.cyan}║${C.reset}`);
   console.log(line);
-  console.log(`  ${C.green}${C.bright}✔ Server${C.reset}        ${C.white}http://localhost:${PORT}${C.reset}`);
+  console.log(`  ${C.green}${C.bright}✔ Server${C.reset}        ${C.white}http://localhost:${actualPort || PORT}${C.reset}`);
   console.log(`  ${C.green}${C.bright}✔ Environment${C.reset}   ${C.yellow}${ENV}${C.reset}`);
   console.log(`  ${C.green}${C.bright}✔ MongoDB${C.reset}       ${C.white}${process.env.MONGO_URI}${C.reset}`);
   console.log(`  ${C.green}${C.bright}✔ DB Status${C.reset}     ${mongoose.connection.readyState === 1 ? `${C.green}Connected` : `${C.red}Disconnected`}${C.reset}`);
@@ -56,8 +59,8 @@ const printBanner = () => {
   }
 
   console.log(line);
-  console.log(`${C.gray}  API Base: http://localhost:${PORT}/api${C.reset}`);
-  console.log(`${C.gray}  Health:   http://localhost:${PORT}/health${C.reset}`);
+  console.log(`${C.gray}  API Base: http://localhost:${actualPort || PORT}/api${C.reset}`);
+  console.log(`${C.gray}  Health:   http://localhost:${actualPort || PORT}/health${C.reset}`);
   console.log(`${C.gray}  Routes:   /auth /users /programs /attendance /transactions${C.reset}`);
   console.log(`${C.gray}            /reports /announcements /welfare /analytics /notifications${C.reset}`);
   console.log(`${C.gray}            /ai ${C.dim}(chat, summary, risk, translate, providers, health)${C.reset}`);
@@ -67,10 +70,42 @@ const printBanner = () => {
 const start = async () => {
   await connectDB();
 
-  app.listen(PORT, () => {
-    printBanner();
-    logger.info(`VOA System API is live on port ${PORT}`);
-  });
+  let currentPort = PORT;
+  const maxAttempts = 10;
+
+  const tryListen = () => {
+    const httpServer = http.createServer(app);
+    initSocketIO(httpServer);
+    const server = httpServer.listen(currentPort)
+      .on('listening', () => {
+        printBanner(currentPort);
+        logger.info(`VOA System API is live on port ${currentPort}`);
+        // Start background reminder scheduler
+        try {
+          ReminderScheduler.start();
+          logger.info('Reminder Scheduler started');
+        } catch (err) {
+          logger.warn(`Reminder Scheduler not started: ${err.message}`);
+        }
+      })
+      .on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          if (currentPort - PORT < maxAttempts) {
+            currentPort++;
+            logger.warn(`Port ${currentPort - 1} in use — trying port ${currentPort}`);
+            tryListen();
+          } else {
+            logger.error(`Cannot find available port after ${maxAttempts} attempts`);
+            process.exit(1);
+          }
+        } else {
+          logger.error(`Cannot start server: ${err.message}`);
+          process.exit(1);
+        }
+      });
+  };
+
+  tryListen();
 };
 
 start();
