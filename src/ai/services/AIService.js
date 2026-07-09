@@ -101,9 +101,12 @@ class AIService {
     // Assess risk
     const riskResult = await RiskEngine.fullAssess(this.router, message, patientContext);
 
-    // Determine conversation level
-    const level = conversationCache.getContext(patient._id)?.level
+    // Determine conversation level and previous topic
+    const cachedContext = conversationCache.getContext(patient._id);
+    const level = cachedContext?.level
       || this.router.classifyLevel(message, patientContext, chat.messages);
+
+    const previousTopic = cachedContext?.lastTopic || null;
 
     // Build context from prompt engine + RAG
     let ragChunks = [];
@@ -114,7 +117,7 @@ class AIService {
       try {
         const topics = contextEngine.initialized
           ? require('./PromptRouter').getKnowledgeForTopic(
-              require('./PromptRouter').classifyTopic(intent, message, patientContext)
+              require('./PromptRouter').classifyTopic(intent, message, patientContext, previousTopic)
             )
           : ['common-faq'];
         ragChunks = await this.ragRetriever.retrieve(message, {
@@ -134,6 +137,7 @@ class AIService {
           patientContext,
           conversationHistory: chat.messages,
           ragChunks,
+          previousTopic,
         });
       } catch { /* context engine is best-effort */ }
     }
@@ -186,6 +190,7 @@ class AIService {
     conversationCache.setContext(patient._id, {
       level,
       lastIntent: intent,
+      lastTopic: contextResult?.topic || '',
       lastRiskLevel: riskResult.level,
     });
 
@@ -287,15 +292,21 @@ class AIService {
   classifyIntent(message) {
     const lower = message.toLowerCase();
 
-    if (/\b(fever|cough|headache|pain|symptom|sick|flu|cold|malaria|typhoid|diarrhea|rash|nausea|vomit)\b/.test(lower)) return 'symptom_check';
-    if (/\b(hiv|art|medication|drug|adherence|missed|dose|pill|treatment|tl\d|arv)\b/.test(lower)) return 'medication';
-    if (/\b(hospital|clinic|doctor|appointment|consult|pharmacy|lab|test|result)\b/.test(lower)) return 'appointment';
+    if (/\b(emergency|accident|urgent|bleeding|unconscious|choking|drowning|burn|fracture|overdose|poison)\b/.test(lower)) return 'emergency';
+    if (/\b(malaria|plasmodium|antimalarial|coartem|artemisinin)\b/.test(lower)) return 'malaria';
+    if (/\b(diabetes|diabetic|sugar|glucose|insulin|hypoglycemia|hyperglycemia)\b/.test(lower)) return 'diabetes';
+    if (/\b(hypertension|blood pressure|bp|high bp|hypertensive)\b/.test(lower)) return 'hypertension';
+    if (/\b(asthma|pneumonia|bronchitis|copd|wheezing|inhaler|shortness of breath|difficulty breathing)\b/.test(lower)) return 'respiratory';
+    if (/\b(tb|tuberculosis|cough.*blood|night sweat|phlegm|sputum|dots|gene xpert)\b/.test(lower)) return 'tb';
     if (/\b(mental|depress|anxiety|stress|suicide|mood|sleep|insomnia|panic|trauma|grief|counsell)\b/.test(lower)) return 'mental_health';
-    if (/\b(nutrition|diet|food|eat|meal|weight|hunger|appetite)\b/.test(lower)) return 'nutrition';
-    if (/\b(pregnan|pregnancy|baby|breastfeed|antenatal|postnatal|maternal|child|infant)\b/.test(lower)) return 'maternal_child';
-    if (/\b(sti|std|sex|discharge|genital|sore|syphilis|gonorrhea|chlamydia)\b/.test(lower)) return 'sti';
-    if (/\b(tb|tuberculosis|cough.*blood|night sweat|phlegm|sputum)\b/.test(lower)) return 'tb';
-    if (/\b(emergency|accident|urgent|bleeding|unconscious|breathing|choking|drowning|burn|fracture)\b/.test(lower)) return 'emergency';
+    if (/\b(sti|std|sex|discharge|genital|sore|syphilis|gonorrhea|chlamydia|condom)\b/.test(lower)) return 'sti';
+    if (/\b(pregnan|pregnancy|baby|breastfeed|antenatal|postnatal|maternal|child|infant|newborn)\b/.test(lower)) return 'maternal_child';
+    if (/\b(vaccine|vaccination|immunization|shot|injection|booster)\b/.test(lower)) return 'vaccination';
+    if (/\b(first aid|wound|cut|sprain|bandage|nose bleed|bite|sting|injury)\b/.test(lower)) return 'first_aid';
+    if (/\b(nutrition|diet|food|eat|meal|weight|hunger|appetite|vitamin)\b/.test(lower)) return 'nutrition';
+    if (/\b(hiv|art|medication|drug|adherence|missed|dose|pill|treatment|tl\d|arv|cd4|viral load)\b/.test(lower)) return 'medication';
+    if (/\b(hospital|clinic|doctor|appointment|consult|pharmacy|lab|test|result)\b/.test(lower)) return 'appointment';
+    if (/\b(fever|cough|headache|pain|symptom|sick|flu|cold|typhoid|diarrhea|rash|nausea|vomit|body pain|fatigue|weakness|dizziness|sore throat|runny nose|allergy|back pain)\b/.test(lower)) return 'general_health';
     if (/\b(hello|hi|hey|good\s*(morning|afternoon|evening)|howdy)\b/.test(lower)) return 'greeting';
     if (/\b(thank|thanks|bye|goodbye|see you|appreciate)\b/.test(lower)) return 'closing';
 

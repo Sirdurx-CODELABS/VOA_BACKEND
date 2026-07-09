@@ -25,11 +25,12 @@ class ContextEngine {
       patientContext = {},
       conversationHistory = [],
       ragChunks = [],
+      previousTopic = null,
     } = options;
 
     if (!this.initialized) await this.init();
 
-    const topic = promptRouter.classifyTopic(intent, message, patientContext);
+    const topic = promptRouter.classifyTopic(intent, message, patientContext, previousTopic);
     const promptNames = [...promptRouter.getPromptsForTopic(topic)];
     const channelPrompt = promptRouter.getChannelPrompt(channel);
     if (channelPrompt && !promptNames.includes(channelPrompt)) {
