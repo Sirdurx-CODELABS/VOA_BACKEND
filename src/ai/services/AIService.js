@@ -19,6 +19,8 @@ const contextEngine = require('./ContextEngine');
 const EmbeddingService = require('./EmbeddingService');
 const KnowledgeService = require('./KnowledgeService');
 const RAGRetriever = require('./RAGRetriever');
+const healthResources = require('./HealthResourceService');
+const ConversationMemoryService = require('./ConversationMemoryService');
 const vectorStore = require('./VectorStore');
 const AIPatient = require('../models/AIPatient');
 const AIChat = require('../models/AIChat');
@@ -144,7 +146,7 @@ class AIService {
 
     const systemPrompt = contextResult?.context || undefined;
 
-    // Route to AI provider
+    // Route to AI provider — includes self-verification prompt instruction
     const aiResponse = await this.router.route(
       [
         ...chat.messages.slice(-6).map(m => ({
@@ -162,6 +164,13 @@ class AIService {
       }
     );
 
+    // Verify response for hallucinations
+    const topic = contextResult?.topic || '';
+    const isValid = this.verifyResponse(aiResponse.content, message, topic);
+    if (!isValid && aiResponse.content) {
+      aiResponse.content += '\n\nPlease speak with a healthcare provider for an accurate assessment.';
+    }
+
     // Evaluate escalation
     const escalation = this.escalationEngine.evaluate(message, patientContext, riskResult);
 
@@ -173,6 +182,25 @@ class AIService {
     if (escalation.shouldEscalate && escalation.escalationMessage) {
       finalResponse = `${aiResponse.content}\n\n${escalation.escalationMessage}`;
     }
+
+    // Extract conversation memory (symptoms, medications mentioned)
+    const memoryService = new ConversationMemoryService();
+    const extractedMemory = memoryService.extractFromMessage(message);
+    const existingMemory = conversationCache.getContext(patient._id)?.memory || {};
+    const mergedMemory = memoryService.merge(extractedMemory, existingMemory);
+    const memorySummary = memoryService.summarize(mergedMemory);
+
+    // Attach memory summary to patient context for future messages
+    if (memorySummary && contextResult) {
+      contextResult.context += `\n\n## CONVERSATION MEMORY\n\n${memorySummary}`;
+    }
+
+    // Collect health education resources for the detected topic
+    const topics = contextResult?.knowledgeTopics || ['general'];
+    let resources = [];
+    try {
+      resources = healthResources.getResourcesForTopics(topics);
+    } catch { /* best-effort */ }
 
     // Save AI response
     chat.messages.push({ sender: 'ai', message: finalResponse });
@@ -192,6 +220,7 @@ class AIService {
       lastIntent: intent,
       lastTopic: contextResult?.topic || '',
       lastRiskLevel: riskResult.level,
+      memory: mergedMemory,
     });
 
     // Cache FAQ if applicable
@@ -233,6 +262,8 @@ class AIService {
       cached: false,
       intent,
       conversationLevel: level,
+      topic: contextResult?.topic || '',
+      resources: resources.length > 0 ? resources : undefined,
     };
   }
 
@@ -356,6 +387,35 @@ class AIService {
         patient.gender ? `Gender: ${patient.gender}` : null,
       ].filter(Boolean).join(', '),
     };
+  }
+
+  /**
+   * Verify AI response for potential hallucinations.
+   * Checks for common hallucination patterns.
+   */
+  verifyResponse(response, message, topic) {
+    if (!response) return false;
+    const lower = response.toLowerCase();
+
+    // Check for prescription/dosage content (high risk hallucination)
+    if (/\b(take\s+\d+\s*(mg|ml|tablet|pill|cap|capsule)|dose\s+(of|at))\b/.test(lower)) {
+      logger.warn(`Hallucination check: possible dosage in response (topic=${topic})`);
+      return false;
+    }
+
+    // Check for diagnostic language
+    if (/\b(you have|you are diagnosed with|diagnosis is|suffering from)\s+(hiv|aids|tb|malaria|diabetes|cancer|hypertension)\b/.test(lower)) {
+      logger.warn(`Hallucination check: possible diagnosis statement (topic=${topic})`);
+      return false;
+    }
+
+    // Check for topic drift — if user asked about X, does response talk about Y?
+    if (topic === 'malaria' && !/\b(malaria|fever|mosquito|antimalarial|act)\b/.test(lower)) {
+      logger.warn(`Hallucination check: response off-topic (expected=malaria)`);
+      return false;
+    }
+
+    return true;
   }
 
   /**
