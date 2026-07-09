@@ -30,12 +30,18 @@ router.post('/pharmacy/review/:prescriptionId', requirePermission('review_prescr
 router.post('/pharmacy/dispense/:prescriptionId', requirePermission('dispense_medication'), validate(v.dispensePrescription), ctrl.dispensePrescription);
 router.get('/pharmacy/history/:patientId', requirePermission('view_prescriptions'), ctrl.getPharmacyHistory);
 
+// ─── Prescription Creation (Workflow Handoff) ──────────────────────
+router.post('/prescriptions', requirePermission('create_prescription'), ctrl.createWorkflowPrescription);
+
 // ─── Laboratory ────────────────────────────────────────────────────
 router.get('/lab/requests',           requirePermission('process_sample'),        ctrl.getLabRequests);
 router.put('/lab/collect/:requestId', requirePermission('process_sample'),     validate(v.collectSample),        ctrl.collectSample);
 router.put('/lab/result/:requestId',  requirePermission('upload_lab_results'), validate(v.uploadLabResult),     ctrl.uploadLabResult);
 router.get('/lab/critical',           requirePermission('flag_critical_result'),  ctrl.getCriticalResults);
 router.get('/lab/results/:patientId', requirePermission('view_lab_results'),      ctrl.getPatientLabResults);
+
+// ─── Lab Request Creation (Workflow Handoff) ───────────────────────
+router.post('/lab/request', requirePermission('request_lab'), ctrl.createWorkflowLabRequest);
 
 // ─── Adherence & Counseling ────────────────────────────────────────
 router.get('/adherence/patients',     requirePermission('view_adherence'),        ctrl.getPoorAdherencePatients);

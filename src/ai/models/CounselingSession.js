@@ -6,7 +6,7 @@ const counselingSessionSchema = new mongoose.Schema({
   hospital: { type: mongoose.Schema.Types.ObjectId, ref: 'AIHospital' },
   type: {
     type: String,
-    enum: ['adherence', 'enhanced_adherence', 'disclosure', 'education', 'psychosocial', 'prevention', 'treatment_literacy'],
+    enum: ['adherence', 'enhanced_adherence', 'disclosure', 'education', 'psychosocial', 'prevention', 'treatment_literacy', 'other'],
     default: 'adherence',
   },
   sessionDate: { type: Date, default: Date.now },

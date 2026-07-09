@@ -348,6 +348,72 @@ exports.getPharmacyHistory = async (req, res) => {
   return success(res, records);
 };
 
+// ─── Prescription Creation (Workflow Handoff) ──────────────────────
+exports.createWorkflowPrescription = async (req, res) => {
+  const { patientId, visitId, medications, notes } = req.body;
+
+  const AIDoctor = require('../../ai/models/AIDoctor');
+  const PatientVisit = require('../../ai/models/PatientVisit');
+  const doctor = await AIDoctor.findOne({ user: req.user._id });
+  if (!doctor) return error(res, 'No AIDoctor record linked to your account', 400);
+
+  const prescription = await EMRPrescription.create({
+    patient: patientId,
+    doctor: doctor._id,
+    medications: medications || [],
+    notes: notes || '',
+    status: 'active',
+  });
+
+  if (visitId) {
+    await PatientVisit.findByIdAndUpdate(visitId, { $push: { prescriptions: prescription._id } });
+  }
+
+  await PatientTimeline.create({
+    patient: patientId,
+    activityType: 'prescription_created',
+    performedBy: req.user._id,
+    performedByRole: req.user.role,
+    performedByName: req.user.fullName,
+    metadata: { prescriptionId: prescription._id, itemCount: medications?.length },
+  });
+
+  return success(res, prescription, 'Prescription created');
+};
+
+// ─── Lab Request Creation (Workflow Handoff) ────────────────────────
+exports.createWorkflowLabRequest = async (req, res) => {
+  const { patientId, visitId, tests, notes } = req.body;
+
+  const AIDoctor = require('../../ai/models/AIDoctor');
+  const PatientVisit = require('../../ai/models/PatientVisit');
+  const doctor = await AIDoctor.findOne({ user: req.user._id });
+  if (!doctor) return error(res, 'No AIDoctor record linked to your account', 400);
+
+  const labRequest = await EMRLabRequest.create({
+    patient: patientId,
+    doctor: doctor._id,
+    tests: tests || [],
+    notes: notes || '',
+    status: 'requested',
+  });
+
+  if (visitId) {
+    await PatientVisit.findByIdAndUpdate(visitId, { $push: { labRequests: labRequest._id }, status: 'lab_ordered' });
+  }
+
+  await PatientTimeline.create({
+    patient: patientId,
+    activityType: 'lab_requested',
+    performedBy: req.user._id,
+    performedByRole: req.user.role,
+    performedByName: req.user.fullName,
+    metadata: { requestId: labRequest._id, testCount: tests?.length },
+  });
+
+  return success(res, labRequest, 'Lab request created');
+};
+
 // ─── Laboratory ─────────────────────────────────────────────────────
 exports.getLabRequests = async (req, res) => {
   const { status } = req.query;

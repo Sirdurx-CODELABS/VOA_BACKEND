@@ -68,7 +68,7 @@ const uploadLabResult = Joi.object({
 
 const createCounselingSession = Joi.object({
   patient: Joi.string().required(),
-  type: Joi.string().valid('adherence', 'initial', 'follow_up', 'disclosure', 'mental_health', 'other').required(),
+  type: Joi.string().valid('adherence', 'enhanced_adherence', 'disclosure', 'education', 'psychosocial', 'prevention', 'treatment_literacy', 'other').required(),
   sessionDate: Joi.date().optional(),
   notes: Joi.string().max(2000).optional().allow(''),
   outcome: Joi.string().max(500).optional().allow(''),
@@ -78,7 +78,7 @@ const createCounselingSession = Joi.object({
 
 const openCaseRecord = Joi.object({
   patient: Joi.string().required(),
-  category: Joi.string().valid('clinical', 'psychosocial', 'nutritional', 'economic', 'other').required(),
+  category: Joi.string().valid('adherence', 'missed_appointments', 'social_support', 'disclosure', 'mental_health', 'tb', 'pregnancy', 'adolescent', 'lost_to_followup', 'other').required(),
   riskLevel: Joi.string().valid('low', 'medium', 'high', 'critical').required(),
   description: Joi.string().max(2000).optional().allow(''),
   notes: Joi.string().max(1000).optional().allow(''),
