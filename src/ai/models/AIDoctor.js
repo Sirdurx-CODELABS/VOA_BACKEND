@@ -16,7 +16,7 @@ const scheduleDaySchema = new mongoose.Schema({
 }, { _id: false });
 
 const doctorSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, /* TODO(migration): make required after linking existing AIDoctor→User records */
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, /* Run scripts/migrate-link-aidoctor-users.js before enabling this */
   name: { type: String, required: true, trim: true },
   medicalLicense: { type: String, required: true, trim: true },
   hospital: { type: mongoose.Schema.Types.ObjectId, ref: 'AIHospital', default: null },

@@ -11,6 +11,7 @@ const EMRLabRequest = require('../../ai/models/EMRLabRequest');
 const EMRPrescription = require('../../ai/models/EMRPrescription');
 const EMRReferral = require('../../ai/models/EMRReferral');
 const AIChat = require('../../ai/models/AIChat');
+const workflow = require('../services/workflow.service');
 const { success, error } = require('../../utils/apiResponse');
 
 // ─── Staff Management ──────────────────────────────────────────────
@@ -884,6 +885,78 @@ exports.resolveEscalation = async (req, res) => {
   return success(res, reminder, 'Escalation resolved');
 };
 
+// ─── Appointments ────────────────────────────────────────────────────
+const EMRAppointment = require('../../ai/models/EMRAppointment');
+
+exports.listAppointments = async (req, res) => {
+  const { date, status, doctor } = req.query;
+  const filter = {};
+  if (date) filter.date = date;
+  if (status) filter.status = status;
+  if (doctor) filter.doctor = doctor;
+  if (req.staffProfile?.hospital) filter.hospital = req.staffProfile.hospital;
+
+  const appointments = await EMRAppointment.find(filter)
+    .populate('patient', 'name phone')
+    .populate('doctor', 'name')
+    .sort({ date: 1, time: 1 });
+  return success(res, appointments);
+};
+
+exports.getAppointment = async (req, res) => {
+  const appointment = await EMRAppointment.findById(req.params.id)
+    .populate('patient', 'name phone age gender')
+    .populate('doctor', 'name specialization');
+  if (!appointment) return error(res, 'Appointment not found', 404);
+  return success(res, appointment);
+};
+
+exports.createAppointment = async (req, res) => {
+  const appointment = await EMRAppointment.create({
+    ...req.body,
+    hospital: req.staffProfile?.hospital || req.body.hospital,
+  });
+
+  await PatientTimeline.create({
+    patient: req.body.patient,
+    activityType: 'appointment_scheduled',
+    performedBy: req.user._id,
+    performedByRole: req.user.role,
+    performedByName: req.user.fullName,
+    metadata: { appointmentId: appointment._id, date: req.body.date, time: req.body.time },
+  });
+
+  return success(res, appointment, 'Appointment scheduled', 201);
+};
+
+exports.updateAppointmentStatus = async (req, res) => {
+  const { status, notes } = req.body;
+  const appointment = await EMRAppointment.findByIdAndUpdate(
+    req.params.id,
+    { $set: { status, notes } },
+    { new: true }
+  );
+  if (!appointment) return error(res, 'Appointment not found', 404);
+
+  const timelineType = {
+    checked_in: 'appointment_checked_in',
+    in_progress: 'appointment_started',
+    completed: 'appointment_completed',
+    cancelled: 'appointment_cancelled',
+  }[status] || 'appointment_updated';
+
+  await PatientTimeline.create({
+    patient: appointment.patient,
+    activityType: timelineType,
+    performedBy: req.user._id,
+    performedByRole: req.user.role,
+    performedByName: req.user.fullName,
+    metadata: { appointmentId: appointment._id, status, notes },
+  });
+
+  return success(res, appointment, `Appointment ${status}`);
+};
+
 // ─── Notifications ────────────────────────────────────────────────────
 const Notification = require('../../ai/models/Notification');
 const notifyService = require('../services/notification.service');
@@ -911,4 +984,105 @@ exports.markNotificationRead = async (req, res) => {
 exports.markAllNotificationsRead = async (req, res) => {
   await notifyService.markAllRead(req.user._id);
   return success(res, null, 'All notifications marked as read');
+};
+
+// ─── Workflow: PatientVisit ───────────────────────────────────────────
+
+exports.getWorkflowQueue = async (req, res, next) => {
+  try {
+    const hospitalId = req.staffProfile?.hospital || req.query.hospital;
+    const statuses = req.query.statuses?.split(',') || ['checked_in', 'triaged'];
+    const visits = await workflow.getWaitingQueue(hospitalId, statuses);
+    return success(res, visits);
+  } catch (err) { next(err); }
+};
+
+exports.getWorkflowDoctorQueue = async (req, res, next) => {
+  try {
+    const visits = await workflow.getDoctorQueue(req.user._id);
+    return success(res, visits);
+  } catch (err) { next(err); }
+};
+
+exports.getActiveWorkflowVisits = async (req, res, next) => {
+  try {
+    const hospitalId = req.staffProfile?.hospital || req.query.hospital;
+    const visits = await workflow.getActiveVisits(hospitalId, req.query.status);
+    return success(res, visits);
+  } catch (err) { next(err); }
+};
+
+exports.getWorkflowVisitById = async (req, res, next) => {
+  try {
+    const visit = await workflow.getVisitById(req.params.id);
+    if (!visit) return error(res, 'Visit not found', 404);
+    return success(res, visit);
+  } catch (err) { next(err); }
+};
+
+exports.checkInPatient = async (req, res, next) => {
+  try {
+    const visit = await workflow.createVisit({
+      patient:   req.body.patient,
+      hospital:  req.body.hospital,
+      department: req.body.department,
+      visitType: req.body.visitType,
+      source:    req.body.source,
+    }, req);
+    return success(res, visit, 'Patient checked in');
+  } catch (err) { next(err); }
+};
+
+exports.transitionWorkflowVisit = async (req, res, next) => {
+  try {
+    const visit = await workflow.transitionVisit(req.params.visitId, req.body.status, req, {
+      notes: req.body.notes,
+    });
+    return success(res, visit, `Visit status updated to "${req.body.status}"`);
+  } catch (err) { next(err); }
+};
+
+exports.dischargePatient = async (req, res, next) => {
+  try {
+    const visit = await workflow.transitionVisit(req.params.visitId, 'discharged', req, {
+      notes:        req.body.dischargeNotes,
+      followUpDate: req.body.followUpDate,
+    });
+    return success(res, visit, 'Patient discharged');
+  } catch (err) { next(err); }
+};
+
+exports.startVisitConsultation = async (req, res, next) => {
+  try {
+    const visit = await workflow.getVisitById(req.params.visitId);
+    if (!visit) return error(res, 'Visit not found', 404);
+    if (visit.status !== 'triaged') return error(res, 'Visit must be triaged before starting consultation', 400);
+
+    const AIConsultation = require('../../ai/models/AIConsultation');
+    const consultation = await AIConsultation.create({
+      patient: visit.patient?._id || visit.patient,
+      hospital: visit.hospital,
+      type: visit.visitType,
+      status: 'in_progress',
+      doctor: null,
+      startedAt: new Date(),
+    });
+
+    visit.consultation = consultation._id;
+    visit.status = 'in_consultation';
+    visit.attendedBy = req.user._id;
+    visit.consultationStartTime = new Date();
+    await visit.save();
+
+    await PatientTimeline.create({
+      patient: visit.patient?._id || visit.patient,
+      activityType: 'consultation_started',
+      performedBy: req.user._id,
+      performedByRole: req.user.role,
+      performedByName: req.user.fullName,
+      metadata: { visitId: visit._id.toString(), consultationId: consultation._id.toString() },
+    });
+
+    return success(res, { visit, consultation }, 'Consultation started');
+  } catch (err) { next(err); }
 };
